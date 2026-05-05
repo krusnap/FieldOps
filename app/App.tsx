@@ -4,6 +4,7 @@ import { BottomTabKey } from "./src/components/BottomNav";
 import { FieldOpsProvider } from "./src/context/FieldOpsContext";
 import { useFieldOps } from "./src/hooks/useFieldOps";
 import { ClaimsScreen } from "./src/screens/ClaimsScreen";
+import { DailyClaimDetailScreen } from "./src/screens/DailyClaimDetailScreen";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { ProfileScreen } from "./src/screens/ProfileScreen";
@@ -19,6 +20,7 @@ export default function App() {
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<BottomTabKey>("dashboard");
+  const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
   const {
     alerts,
     claims,
@@ -108,7 +110,21 @@ function MainApp() {
         />
       );
     case "claims":
-      return <ClaimsScreen claims={claims} onSelectTab={setActiveTab} />;
+      if (selectedBundleId) {
+        return (
+          <DailyClaimDetailScreen
+            bundleId={selectedBundleId}
+            onBack={() => setSelectedBundleId(null)}
+            onSelectTab={(tab) => { setSelectedBundleId(null); setActiveTab(tab); }}
+          />
+        );
+      }
+      return (
+        <ClaimsScreen
+          onOpenBundle={(id) => setSelectedBundleId(id)}
+          onSelectTab={setActiveTab}
+        />
+      );
     case "profile":
       return (
         <ProfileScreen

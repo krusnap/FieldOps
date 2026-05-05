@@ -12,6 +12,7 @@ import authRouter from "./modules/auth/auth.router";
 import tripsRouter from "./modules/trips/trips.router";
 import locationsRouter from "./modules/locations/locations.router";
 import claimsRouter from "./modules/claims/claims.router";
+import bundlesRouter from "./modules/claims/bundles.router";
 import employeesRouter from "./modules/employees/employees.router";
 import dashboardRouter from "./modules/dashboard/dashboard.router";
 
@@ -85,6 +86,7 @@ app.use("/auth", authRouter);
 app.use("/api/trips", tripsRouter);
 app.use("/api/locations", locationsRouter);
 app.use("/api/claims", claimsRouter);
+app.use("/api/bundles", bundlesRouter);
 app.use("/api/employees", employeesRouter);
 app.use("/api/dashboard", dashboardRouter);
 

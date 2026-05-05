@@ -85,16 +85,39 @@ export interface TripData {
 export interface ClaimData {
   id: string;
   trip_id: string | null;
+  bundle_id: string | null;
   user_id: string;
   amount_inr: number;
   rate_per_km: number;
   distance_km: number;
-  status: string;
+  status: "draft" | "pending" | "approved" | "rejected";
   category: string;
   notes: string | null;
   created_at: string;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  trips?: {
+    started_at: string;
+    ended_at: string | null;
+    total_distance_km: number;
+    avg_speed_kmh: number;
+  };
+}
+
+export interface BundleData {
+  id: string;
+  user_id: string;
+  claim_date: string;           // "2026-05-05"
+  status: "draft" | "pending" | "approved" | "rejected";
+  total_amount_inr: number;
+  total_distance_km: number;
+  trip_count: number;
+  notes: string | null;
+  rejection_reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface LocationPointPayload {
@@ -363,6 +386,38 @@ const api = {
     },
   },
 
+  // ─── Bundles ─────────────────────────────────────────────────────────────────
+
+  bundles: {
+    async list(status?: string): Promise<BundleData[]> {
+      try {
+        const params = status ? `?status=${status}` : "";
+        const { data } = await axiosInstance.get(`/api/bundles${params}`);
+        return data.data ?? [];
+      } catch {
+        return [];
+      }
+    },
+
+    async getById(bundleId: string): Promise<BundleData & { claims: ClaimData[] }> {
+      const { data } = await axiosInstance.get(`/api/bundles/${bundleId}`);
+      if (!data.success) throw new Error(data.error ?? "Bundle not found");
+      return data.data;
+    },
+
+    async submit(bundleId: string): Promise<BundleData> {
+      const { data } = await axiosInstance.patch(`/api/bundles/${bundleId}/submit`);
+      if (!data.success) throw new Error(data.error ?? "Failed to submit bundle");
+      return data.data;
+    },
+
+    async addNote(bundleId: string, notes: string): Promise<BundleData> {
+      const { data } = await axiosInstance.post(`/api/bundles/${bundleId}/note`, { notes });
+      if (!data.success) throw new Error(data.error ?? "Failed to save note");
+      return data.data;
+    },
+  },
+
   // ─── Dashboard ───────────────────────────────────────────────────────────────
 
   dashboard: {
@@ -378,3 +433,4 @@ const api = {
 };
 
 export default api;
+

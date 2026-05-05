@@ -80,6 +80,49 @@ export const apiClient = {
     const { data } = await client.get(`/api/trips/employee/${userId}`);
     return data.data ?? [];
   },
+
+  // ─── Bundles (Daily Claim Bundles) ────────────────────────────────
+  async getManagerBundles(params?: { status?: string; date_from?: string; date_to?: string }) {
+    const q = new URLSearchParams();
+    if (params?.status && params.status !== "all") q.set("status", params.status);
+    if (params?.date_from) q.set("date_from", params.date_from);
+    if (params?.date_to) q.set("date_to", params.date_to);
+    const { data } = await client.get(`/api/bundles/manager?${q.toString()}`);
+    return data.data ?? [];
+  },
+
+  async getBundle(id: string) {
+    const { data } = await client.get(`/api/bundles/${id}`);
+    return data.data;
+  },
+
+  async approveBundle(id: string) {
+    const { data } = await client.patch(`/api/bundles/${id}/approve`);
+    return data.data;
+  },
+
+  async rejectBundle(id: string, reason: string) {
+    const { data } = await client.patch(`/api/bundles/${id}/reject`, { reason });
+    return data.data;
+  },
+
+  async createManagerClaim(payload: {
+    user_id: string;
+    amount_inr: number;
+    distance_km?: number;
+    category: string;
+    notes?: string;
+    status?: "pending" | "approved";
+  }) {
+    const { data } = await client.post("/api/claims/manager/create", payload);
+    return data.data;
+  },
+
+  async overrideClaim(id: string, payload: { amount_inr?: number; notes?: string; category?: string }) {
+    const { data } = await client.patch(`/api/claims/${id}/override`, payload);
+    return data.data;
+  },
 };
 
 export default apiClient;
+

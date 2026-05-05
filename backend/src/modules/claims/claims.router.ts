@@ -56,7 +56,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     }
     // ADMIN sees all — no filter
 
-    if (status && ["pending", "approved", "rejected"].includes(status)) {
+    if (status && ["draft", "pending", "approved", "rejected"].includes(status)) {
       query = query.eq("status", status);
     }
 
@@ -133,7 +133,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       amount_inr,
       category,
       notes: notes ?? null,
-      status: "pending",
+      status: "draft",
       rate_per_km: req.user!.rate_per_km ?? 10,
     };
 
@@ -172,6 +172,151 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     next(err);
   }
 });
+
+// ─── POST /api/claims/manager/create ─────────────────────────────────────────
+// Manager: create a new claim directly on behalf of an employee
+// (bypasses draft flow — goes straight to pending or approved)
+
+const ManagerCreateClaimSchema = z.object({
+  user_id: z.string().uuid("Valid employee user_id required"),
+  trip_id: z.string().uuid().optional(),
+  amount_inr: z.number().positive("Amount must be positive"),
+  distance_km: z.number().min(0).optional(),
+  category: z.string().min(1).max(100),
+  notes: z.string().max(500).optional(),
+  status: z.enum(["pending", "approved"]).default("pending"),
+});
+
+router.post(
+  "/manager/create",
+  requireRole("MANAGER", "ADMIN"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const reviewerId = req.user!.id;
+
+      const parsed = ManagerCreateClaimSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const message = parsed.error.errors.map((e) => e.message).join(", ");
+        throw new AppError(message, 400);
+      }
+
+      const { user_id, trip_id, amount_inr, distance_km, category, notes, status } = parsed.data;
+
+      // Verify target employee exists
+      const { data: targetUser } = await supabaseAdmin
+        .from("users")
+        .select("id, rate_per_km")
+        .eq("id", user_id)
+        .single();
+
+      if (!targetUser) throw new AppError("Employee not found", 404);
+
+      const insertData: Record<string, unknown> = {
+        user_id,
+        amount_inr,
+        distance_km: distance_km ?? 0,
+        category,
+        notes: notes ?? null,
+        status,
+        rate_per_km: (targetUser as any).rate_per_km ?? 10,
+        reviewed_by: reviewerId,
+        reviewed_at: status === "approved" ? new Date().toISOString() : null,
+      };
+
+      if (trip_id) insertData.trip_id = trip_id;
+
+      const { data: claim, error } = await supabaseAdmin
+        .from("claims")
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) throw new AppError("Failed to create claim", 500);
+
+      logger.info("Manager created claim", { claimId: claim.id, reviewerId, forUser: user_id });
+      res.status(201).json({ success: true, data: claim });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── PATCH /api/claims/:id/override ──────────────────────────────────────────
+// Manager: correct a rejected claim by entering km; amount is auto-calculated
+
+const OverrideClaimSchema = z.object({
+  distance_km: z.number().positive("Distance must be greater than 0"),
+  notes: z.string().max(500).optional(),
+  category: z.string().min(1).max(100).optional(),
+});
+
+router.patch(
+  "/:id/override",
+  requireRole("MANAGER", "ADMIN"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const claimId = req.params.id;
+      const reviewerId = req.user!.id;
+
+      const parsed = OverrideClaimSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const message = parsed.error.errors.map((e) => e.message).join(", ");
+        throw new AppError(message, 400);
+      }
+
+      // Fetch claim with rate_per_km to auto-calculate corrected amount
+      const { data: claim } = await supabaseAdmin
+        .from("claims")
+        .select("id, status, bundle_id, rate_per_km")
+        .eq("id", claimId)
+        .single();
+
+      if (!claim) throw new AppError("Claim not found", 404);
+      if (claim.status !== "rejected") throw new AppError("Only rejected claims can be overridden", 400);
+
+      const ratePerKm = Number(claim.rate_per_km) || 10;
+      const correctedAmount = Math.round(parsed.data.distance_km * ratePerKm * 100) / 100;
+
+      const updateData: Record<string, unknown> = {
+        status: "pending",
+        distance_km: parsed.data.distance_km,
+        amount_inr: correctedAmount,
+        reviewed_by: reviewerId,
+        reviewed_at: new Date().toISOString(),
+      };
+      if (parsed.data.notes !== undefined) updateData.notes = parsed.data.notes;
+      if (parsed.data.category !== undefined) updateData.category = parsed.data.category;
+
+      const { data: updated, error } = await supabaseAdmin
+        .from("claims")
+        .update(updateData)
+        .eq("id", claimId)
+        .select()
+        .single();
+
+      if (error) throw new AppError("Failed to override claim", 500);
+
+      // Move bundle back to pending if it was rejected
+      if (claim.bundle_id) {
+        await supabaseAdmin
+          .from("daily_claim_bundles")
+          .update({ status: "pending", rejection_reason: null, updated_at: new Date().toISOString() })
+          .eq("id", claim.bundle_id)
+          .eq("status", "rejected");
+      }
+
+      logger.info("Claim overridden by manager", {
+        claimId,
+        reviewerId,
+        correctedKm: parsed.data.distance_km,
+        correctedAmount,
+      });
+      res.json({ success: true, data: { ...updated, corrected_amount_inr: correctedAmount } });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // ─── PATCH /api/claims/:id/approve ───────────────────────────────────────────
 

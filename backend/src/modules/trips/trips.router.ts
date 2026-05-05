@@ -6,6 +6,7 @@ import { AppError } from "../../utils/AppError";
 import { calculateDistance } from "../../utils/haversine";
 import logger from "../../utils/logger";
 import { z } from "zod";
+import { syncBundleTotals } from "../claims/bundles.router";
 
 const router = Router();
 
@@ -251,30 +252,51 @@ router.post("/:id/end", async (req: Request, res: Response, next: NextFunction) 
       throw new AppError("Failed to end trip", 500);
     }
 
-    // Auto-create claim if distance > 0
+    // Auto-create DRAFT claim and link to daily bundle if distance > 0
     let claim = null;
     if (distResult.totalKm > 0) {
       const ratePerKm = req.user!.rate_per_km ?? 10;
       const amountInr = Math.round(distResult.totalKm * ratePerKm * 100) / 100;
 
-      const { data: newClaim, error: claimError } = await supabaseAdmin
-        .from("claims")
-        .insert({
-          trip_id: tripId,
-          user_id: userId,
-          amount_inr: amountInr,
-          rate_per_km: ratePerKm,
-          distance_km: distResult.totalKm,
-          status: "pending",
-          category: "Trip Reimbursement",
-        })
+      // Bundle date = started_at date (in ISO date format)
+      const claimDate = trip.started_at.slice(0, 10);
+
+      // Upsert daily bundle for this user + date
+      const { data: bundle, error: bundleError } = await supabaseAdmin
+        .from("daily_claim_bundles")
+        .upsert(
+          { user_id: userId, claim_date: claimDate },
+          { onConflict: "user_id,claim_date", ignoreDuplicates: false }
+        )
         .select()
         .single();
 
-      if (claimError) {
-        logger.error("Failed to auto-create claim", { error: claimError.message });
+      if (bundleError || !bundle) {
+        logger.error("Failed to upsert daily bundle", { error: bundleError?.message });
       } else {
-        claim = newClaim;
+        // Create the claim as draft, linked to the bundle
+        const { data: newClaim, error: claimError } = await supabaseAdmin
+          .from("claims")
+          .insert({
+            trip_id: tripId,
+            user_id: userId,
+            bundle_id: bundle.id,
+            amount_inr: amountInr,
+            rate_per_km: ratePerKm,
+            distance_km: distResult.totalKm,
+            status: "draft",
+            category: "Trip Reimbursement",
+          })
+          .select()
+          .single();
+
+        if (claimError) {
+          logger.error("Failed to auto-create draft claim", { error: claimError.message });
+        } else {
+          claim = newClaim;
+          // Sync bundle totals
+          try { await syncBundleTotals(bundle.id); } catch { /* non-blocking */ }
+        }
       }
     }
 
