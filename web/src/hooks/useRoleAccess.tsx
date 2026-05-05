@@ -1,7 +1,9 @@
-import { createContext, PropsWithChildren, useContext, useMemo, useState } from "react";
+import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 import { AppRole } from "../types/domain";
 
 export interface AuthUser {
+  id: string;
   email: string;
   name: string;
   role: AppRole;
@@ -15,64 +17,121 @@ interface LoginPayload {
 
 interface RoleAccessContextValue {
   user: AuthUser | null;
-  login: (payload: LoginPayload) => { ok: boolean; message?: string };
-  logout: () => void;
+  login: (payload: LoginPayload) => Promise<{ ok: boolean; message?: string }>;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
-
-const ACCOUNTS: Array<AuthUser & { password: string }> = [
-  { name: "Casey Morgan", email: "manager@fieldops.com", password: "Manager@123", role: "manager" },
-  { name: "Jordan Lee", email: "admin@fieldops.com", password: "Admin@123", role: "admin" },
-  {
-    name: "Taylor Brooks",
-    email: "accountant@fieldops.com",
-    password: "Accountant@123",
-    role: "accountant",
-  },
-];
-
-const STORAGE_KEY = "fieldops_auth_user";
 
 const RoleAccessContext = createContext<RoleAccessContextValue | null>(null);
 
 export function RoleAccessProvider({ children }: PropsWithChildren) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as AuthUser;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (data?.session) {
+          const { user: supabaseUser } = data.session;
+          if (supabaseUser) {
+            // Construct AuthUser from Supabase session
+            const role = (supabaseUser.user_metadata?.role as AppRole) || "employee";
+            const name = supabaseUser.user_metadata?.name || supabaseUser.email?.split("@")[0] || "User";
+            setUser({
+              id: supabaseUser.id,
+              email: supabaseUser.email || "",
+              name,
+              role,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    // Subscribe to auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event: string, session: any) => {
+      if (session?.user) {
+        const role = (session.user.user_metadata?.role as AppRole) || "employee";
+        const name = session.user.user_metadata?.name || session.user.email?.split("@")[0] || "User";
+        setUser({
+          id: session.user.id,
+          email: session.user.email || "",
+          name,
+          role,
+        });
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
+  }, []);
 
   const value = useMemo<RoleAccessContextValue>(() => {
     return {
       user,
       isAuthenticated: !!user,
-      login: ({ email, password, role }) => {
-        const matched = ACCOUNTS.find(
-          (item) =>
-            item.email.toLowerCase() === email.toLowerCase().trim() &&
-            item.password === password &&
-            item.role === role
-        );
+      isLoading,
+      login: async ({ email, password, role }) => {
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: email.toLowerCase().trim(),
+            password,
+          });
 
-        if (!matched) {
-          return { ok: false, message: "Invalid credentials. Please check email, password, and role." };
+          if (error) {
+            return { ok: false, message: error.message || "Invalid credentials. Please try again." };
+          }
+
+          if (data?.user) {
+            const authUser: AuthUser = {
+              id: data.user.id,
+              email: data.user.email || "",
+              name: data.user.user_metadata?.name || email.split("@")[0] || "User",
+              role,
+            };
+
+            await supabase.auth.updateUser({
+              data: { role, name: authUser.name },
+            });
+
+            setUser(authUser);
+            return { ok: true };
+          }
+
+          return { ok: false, message: "Login failed. Please try again." };
+        } catch (err) {
+          console.error("Login error:", err);
+          return { ok: false, message: "An error occurred during login." };
         }
-
-        const nextUser: AuthUser = { email: matched.email, name: matched.name, role: matched.role };
-        setUser(nextUser);
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
-        return { ok: true };
       },
-      logout: () => {
-        setUser(null);
-        window.localStorage.removeItem(STORAGE_KEY);
+      logout: async () => {
+        try {
+          const { data: session } = await supabase.auth.getSession();
+          if (session?.session) {
+            await supabase.auth.signOut();
+          }
+        } catch (error) {
+          console.error("Logout error:", error);
+        } finally {
+          setUser(null);
+        }
       },
     };
-  }, [user]);
+  }, [user, isLoading]);
 
   return <RoleAccessContext.Provider value={value}>{children}</RoleAccessContext.Provider>;
 }
@@ -84,5 +143,3 @@ export function useRoleAccess() {
   }
   return ctx;
 }
-
-export const demoAccounts = ACCOUNTS.map(({ password, ...account }) => ({ ...account, passwordHint: password }));

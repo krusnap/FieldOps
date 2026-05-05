@@ -1,12 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Card from "../../../components/ui/Card";
 import Badge from "../../../components/ui/Badge";
 import Tabs from "../../../components/ui/Tabs";
 import Button from "../../../components/ui/Button";
 import EmptyState from "../../../components/ui/EmptyState";
-import { claims } from "../../../mocks/data";
-import { ClaimStatus } from "../../../types/domain";
+import { apiClient } from "../../../lib/apiClient";
 
 const tabItems = [
   { label: "All", value: "all" },
@@ -15,27 +14,70 @@ const tabItems = [
   { label: "Rejected", value: "rejected" },
 ];
 
+interface ClaimItem {
+  id: string;
+  user_id: string;
+  amount_inr: number;
+  distance_km: number;
+  status: string;
+  category: string;
+  created_at: string;
+  trip_id: string | null;
+  users?: { full_name: string; email: string };
+}
+
 export default function ClaimsReviewPage() {
   const [tab, setTab] = useState("all");
-  const [expanded, setExpanded] = useState<string | null>(claims[0]?.id ?? null);
+  const [claims, setClaims] = useState<ClaimItem[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const filteredClaims = useMemo(() => {
-    if (tab === "all") return claims;
-    return claims.filter((claim) => claim.status === (tab as ClaimStatus));
+  const loadClaims = useCallback(async () => {
+    try {
+      const data = await apiClient.getClaims(tab === "all" ? undefined : tab);
+      setClaims(data);
+      if (data.length > 0 && !expanded) setExpanded(data[0].id);
+    } catch (err) {
+      console.error("Failed to load claims:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [tab]);
+
+  useEffect(() => { void loadClaims(); }, [loadClaims]);
+
+  const handleApprove = async (claimId: string) => {
+    try {
+      await apiClient.approveClaim(claimId);
+      void loadClaims();
+    } catch (err) { console.error("Approve failed:", err); }
+  };
+
+  const handleReject = async (claimId: string) => {
+    const reason = prompt("Enter rejection reason:");
+    if (!reason) return;
+    try {
+      await apiClient.rejectClaim(claimId, reason);
+      void loadClaims();
+    } catch (err) { console.error("Reject failed:", err); }
+  };
+
+  if (loading) return <div className="stack-24"><p>Loading claims...</p></div>;
 
   return (
     <div className="stack-24">
-      <Card title="Claims Review" subtitle="Expand each claim for route, distance, and purpose">
+      <Card title="Claims Review" subtitle="Expand each claim for details. Approve or reject.">
         <Tabs items={tabItems} value={tab} onChange={setTab} />
 
         <div className="stack-16 top-space">
-          {filteredClaims.length === 0 && (
-            <EmptyState title="No Claims in This Segment" subtitle="Try changing the claim status tab." />
+          {claims.length === 0 && (
+            <EmptyState title="No Claims Found" subtitle="Try changing the status filter." />
           )}
 
-          {filteredClaims.map((claim) => {
+          {claims.map((claim) => {
             const isExpanded = expanded === claim.id;
+            const employeeName = (claim as any).users?.full_name ?? "Employee";
+            const date = new Date(claim.created_at).toLocaleDateString();
             return (
               <article className="claim-card" key={claim.id}>
                 <button
@@ -44,26 +86,37 @@ export default function ClaimsReviewPage() {
                   onClick={() => setExpanded(isExpanded ? null : claim.id)}
                 >
                   <div>
-                    <strong>{claim.employeeName}</strong>
+                    <strong>{employeeName}</strong>
                     <p>
-                      {claim.date} · ${claim.amount.toFixed(2)} · {claim.distanceKm} km
+                      {date} · ₹{Number(claim.amount_inr).toFixed(2)} · {claim.distance_km} km
                     </p>
                   </div>
                   <div className="row-center gap-12">
-                    <Badge status={claim.status} />
+                    <Badge status={claim.status as any} />
                     <span>{isExpanded ? "-" : "+"}</span>
                   </div>
                 </button>
 
                 {isExpanded && (
                   <div className="claim-body">
-                    <p>
-                      Route: {claim.route.origin} {"->"} {claim.route.destination}
-                    </p>
-                    <p>Reason: {claim.reason}</p>
-                    <Link to={`/manager/claims/${claim.id}`}>
-                      <Button variant="primary">Open Claim Detail</Button>
-                    </Link>
+                    <p>Category: {claim.category}</p>
+                    <p>Distance: {claim.distance_km} km</p>
+                    <p>Amount: ₹{Number(claim.amount_inr).toFixed(2)}</p>
+                    <div className="row-center gap-12" style={{ marginTop: 12 }}>
+                      <Link to={`/manager/claims/${claim.id}`}>
+                        <Button variant="primary">Open Detail</Button>
+                      </Link>
+                      {claim.status === "pending" && (
+                        <>
+                          <Button variant="primary" onClick={() => handleApprove(claim.id)}>
+                            Approve
+                          </Button>
+                          <Button variant="ghost" onClick={() => handleReject(claim.id)}>
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
               </article>

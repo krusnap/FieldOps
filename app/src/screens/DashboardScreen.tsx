@@ -3,26 +3,83 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { BottomNav, BottomTabKey } from "../components/BottomNav";
+import { MiniMapPreview } from "../components/dashboard/MiniMapPreview";
+import { SmartAlertsBanner } from "../components/dashboard/SmartAlertsBanner";
+import { SmartPrimaryActionButton } from "../components/dashboard/SmartPrimaryActionButton";
+import { SyncStatusPill } from "../components/dashboard/SyncStatusPill";
+import { TripTrackingWidget } from "../components/dashboard/TripTrackingWidget";
 import { colors } from "../theme/colors";
+import { LocationPoint, TripStatus } from "../types/fieldOps";
 
 type DashboardScreenProps = {
+  alerts: {
+    outsideGeofence: boolean;
+    offline: boolean;
+    gpsDisabled: boolean;
+    lowBattery: boolean;
+  };
+  employeeName: string;
+  elapsedSeconds: number;
+  gpsPointsCount: number;
+  network: {
+    isOnline: boolean;
+    isSyncing: boolean;
+  };
+  onEndTrip: () => void;
+  onPrimaryAction: () => void;
   onSelectTab: (tab: BottomTabKey) => void;
+  path: LocationPoint[];
+  pendingActions: number;
+  pendingClaimAmountInr: number;
+  primaryActionLabel: "Start Trip" | "Pause Trip" | "Resume Trip";
+  region: string;
+  tasks: Array<{ time: string; title: string; place: string }>;
+  todayDistanceKm: number;
+  tripStatus: TripStatus;
+  weeklyCompliance: string;
+  currentLocation: LocationPoint | null;
 };
 
-const KPI_CARDS = [
-  { label: "Active Trips", value: "18", icon: "route" as const },
-  { label: "Pending Claims", value: "7", icon: "receipt-long" as const },
-  { label: "Field Agents", value: "24", icon: "groups" as const },
-  { label: "Avg Compliance", value: "94%", icon: "verified" as const }
-];
+const STATUS_LABEL: Record<DashboardScreenProps["tripStatus"], string> = {
+  idle: "Idle",
+  active: "In progress",
+  paused: "Paused",
+  completed: "Completed"
+};
 
-const TASKS = [
-  { time: "09:30", title: "Route audit review", place: "Seattle Hub" },
-  { time: "11:00", title: "Vehicle compliance sync", place: "North Dock" },
-  { time: "14:15", title: "Expense policy standup", place: "HQ Room 3A" }
-];
+export function DashboardScreen({
+  alerts,
+  currentLocation,
+  employeeName,
+  elapsedSeconds,
+  gpsPointsCount,
+  network,
+  onEndTrip,
+  onPrimaryAction,
+  onSelectTab,
+  path,
+  pendingActions,
+  pendingClaimAmountInr,
+  primaryActionLabel,
+  region,
+  tasks,
+  todayDistanceKm,
+  tripStatus,
+  weeklyCompliance
+}: DashboardScreenProps) {
+  const timerLabel = new Date(elapsedSeconds * 1000).toISOString().slice(11, 19);
 
-export function DashboardScreen({ onSelectTab }: DashboardScreenProps) {
+  const kpiCards: Array<{ label: string; value: string; icon: keyof typeof MaterialIcons.glyphMap }> = [
+    {
+      label: "Trip Status",
+      value: STATUS_LABEL[tripStatus],
+      icon: tripStatus === "completed" ? "check-circle" : "directions"
+    },
+    { label: "Today Distance", value: `${todayDistanceKm.toFixed(2)} km`, icon: "straighten" },
+    { label: "Pending Claims", value: `INR ${pendingClaimAmountInr.toFixed(0)}`, icon: "receipt-long" },
+    { label: "Weekly Compliance", value: weeklyCompliance, icon: "verified" }
+  ];
+
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -33,30 +90,40 @@ export function DashboardScreen({ onSelectTab }: DashboardScreenProps) {
             <Text style={styles.kicker}>FIELDTRACK OPERATIONS</Text>
             <Text style={styles.pageTitle}>Dashboard</Text>
           </View>
-          <Pressable style={styles.avatarButton}>
-            <MaterialIcons color={colors.indigo700} name="notifications" size={22} />
-          </Pressable>
+          <SyncStatusPill isOnline={network.isOnline} isSyncing={network.isSyncing} />
         </View>
 
+        <TripTrackingWidget
+          distanceKm={todayDistanceKm}
+          gpsPoints={gpsPointsCount}
+          status={tripStatus}
+          timerLabel={timerLabel}
+        />
+
+        <SmartAlertsBanner alerts={alerts} />
+
         <View style={styles.heroCard}>
-          <Text style={styles.heroTitle}>Good morning, Krush</Text>
-          <Text style={styles.heroSub}>You have 5 actions requiring approval before noon.</Text>
+          <Text style={styles.heroTitle}>Good morning, {employeeName}</Text>
+          <Text style={styles.heroSub}>You have {pendingActions} actions requiring your attention today.</Text>
           <View style={styles.heroPillWrap}>
             <View style={styles.heroPill}>
               <MaterialIcons color={colors.onPrimary} name="bolt" size={14} />
-              <Text style={styles.heroPillText}>Priority Window: 10:00 - 12:00</Text>
+              <Text style={styles.heroPillText}>{region} zone • Trip: {STATUS_LABEL[tripStatus]}</Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.quickActionsRow}>
-          <QuickAction icon="add-road" label="New Trip" />
-          <QuickAction icon="assignment-add" label="New Claim" />
-          <QuickAction icon="group-add" label="Assign Agent" />
-        </View>
+        <SmartPrimaryActionButton
+          onEndTrip={onEndTrip}
+          onPrimaryAction={onPrimaryAction}
+          primaryLabel={primaryActionLabel}
+          status={tripStatus}
+        />
+
+        <MiniMapPreview currentLocation={currentLocation} path={path} />
 
         <View style={styles.kpiGrid}>
-          {KPI_CARDS.map((card) => (
+          {kpiCards.map((card) => (
             <View key={card.label} style={styles.kpiCard}>
               <MaterialIcons color={colors.primary} name={card.icon} size={20} />
               <Text style={styles.kpiValue}>{card.value}</Text>
@@ -68,7 +135,7 @@ export function DashboardScreen({ onSelectTab }: DashboardScreenProps) {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Today&apos;s Schedule</Text>
           <View style={styles.taskWrap}>
-            {TASKS.map((task) => (
+            {tasks.map((task) => (
               <View key={task.title} style={styles.taskRow}>
                 <View style={styles.timeBadge}>
                   <Text style={styles.timeText}>{task.time}</Text>
@@ -86,20 +153,6 @@ export function DashboardScreen({ onSelectTab }: DashboardScreenProps) {
 
       <BottomNav activeTab="dashboard" onSelectTab={onSelectTab} />
     </SafeAreaView>
-  );
-}
-
-type QuickActionProps = {
-  icon: keyof typeof MaterialIcons.glyphMap;
-  label: string;
-};
-
-function QuickAction({ icon, label }: QuickActionProps) {
-  return (
-    <Pressable style={styles.quickActionBtn}>
-      <MaterialIcons color={colors.indigo700} name={icon} size={20} />
-      <Text style={styles.quickActionLabel}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -130,14 +183,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "900",
     letterSpacing: -0.6
-  },
-  avatarButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.secondaryFixed
   },
   heroCard: {
     backgroundColor: colors.primaryContainer,
@@ -172,24 +217,6 @@ const styles = StyleSheet.create({
   heroPillText: {
     color: colors.onPrimary,
     fontSize: 12,
-    fontWeight: "700"
-  },
-  quickActionsRow: {
-    flexDirection: "row",
-    gap: 8
-  },
-  quickActionBtn: {
-    flex: 1,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6
-  },
-  quickActionLabel: {
-    color: colors.onSurface,
-    fontSize: 11,
     fontWeight: "700"
   },
   kpiGrid: {

@@ -1,33 +1,90 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
 import DonutStatusChart from "../../../components/charts/DonutStatusChart";
 import LineTrendChart from "../../../components/charts/LineTrendChart";
-import { adminOverview, claims, travelTrend, users } from "../../../mocks/data";
+import apiClient from "../../../lib/apiClient";
+
+// This page used to render static mocks. It now fetches live data from the API.
 
 export default function AdminDashboardPage() {
-  const approved = claims.filter((item) => item.status === "approved").length;
-  const rejected = claims.filter((item) => item.status === "rejected").length;
-  const pending = claims.filter((item) => item.status === "pending").length;
+  const [overview, setOverview] = useState({ totalUsers: 0, activeEmployees: 0, totalTrips: 0, claimsProcessed: 0 });
+  const [claimsList, setClaimsList] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [travelTrend, setTravelTrend] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const inactiveUsers = users.filter((item) => item.status === "Inactive").length;
-  const recentClaims = [...claims].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        setIsLoading(true);
+
+        // Manager/admin summary
+        const managerData = await apiClient.getManagerDashboard();
+
+        // Recent claims and users
+        const claimsData = await apiClient.getClaims();
+        const usersData = await apiClient.getEmployees();
+
+        if (!mounted) return;
+
+        setOverview({
+          totalUsers: usersData.length,
+          activeEmployees: usersData.filter((u: any) => u.is_active).length,
+          totalTrips: managerData?.weeklyTravelSummaryKm ? Math.round(managerData.weeklyTravelSummaryKm) : 0,
+          claimsProcessed: managerData?.approvedClaims ?? 0,
+        });
+
+        setClaimsList(claimsData ?? []);
+        setUsersList(usersData ?? []);
+
+        // Simple travel trend placeholder: show last 7 days value based on weekly summary
+        setTravelTrend([{ label: "Last 7d", value: managerData?.weeklyTravelSummaryKm ?? 0 }]);
+      } catch (err) {
+        // keep UI resilient; errors will be logged in console
+        // eslint-disable-next-line no-console
+        console.error("Failed to load admin dashboard data", err);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const approved = claimsList.filter((item) => item.status === "approved").length;
+  const rejected = claimsList.filter((item) => item.status === "rejected").length;
+  const pending = claimsList.filter((item) => item.status === "pending").length;
+
+  const inactiveUsers = usersList.filter((item) => item.status === "Inactive" || !item.is_active).length;
+  const recentClaims = [...claimsList]
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+    .slice(0, 4);
 
   return (
     <div className="stack-24">
+      {isLoading ? <p>Loading admin dashboard...</p> : null}
+
       <section className="stats-grid">
         <Card title="Total Users">
-          <p className="kpi">{adminOverview.totalUsers}</p>
+          <p className="kpi">{overview.totalUsers}</p>
         </Card>
         <Card title="Active Employees">
-          <p className="kpi">{adminOverview.activeEmployees}</p>
+          <p className="kpi">{overview.activeEmployees}</p>
         </Card>
         <Card title="Total Trips">
-          <p className="kpi">{adminOverview.totalTrips}</p>
+          <p className="kpi">{overview.totalTrips}</p>
         </Card>
         <Card title="Claims Processed">
-          <p className="kpi success">{adminOverview.claimsProcessed}</p>
+          <p className="kpi success">{overview.claimsProcessed}</p>
         </Card>
       </section>
 
@@ -104,9 +161,9 @@ export default function AdminDashboardPage() {
             <tbody>
               {recentClaims.map((claim) => (
                 <tr key={claim.id}>
-                  <td>{claim.employeeName}</td>
+                  <td>{claim.employeeName || claim.employee_email || claim.user_email}</td>
                   <td>{claim.date}</td>
-                  <td>${claim.amount.toFixed(2)}</td>
+                  <td>${(claim.amount ?? claim.amount_inr ?? 0).toFixed(2)}</td>
                   <td>
                     <Badge status={claim.status} />
                   </td>

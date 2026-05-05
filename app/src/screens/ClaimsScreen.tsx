@@ -4,18 +4,19 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { BottomNav, BottomTabKey } from "../components/BottomNav";
 import { colors } from "../theme/colors";
+import { EmployeeClaim } from "../types/fieldOps";
 
 type ClaimsScreenProps = {
+  claims: EmployeeClaim[];
   onSelectTab: (tab: BottomTabKey) => void;
 };
 
-const CLAIMS = [
-  { id: "CLM-1029", category: "Fuel", amount: "$84.20", status: "Approved" },
-  { id: "CLM-1031", category: "Parking", amount: "$18.00", status: "Review" },
-  { id: "CLM-1038", category: "Toll", amount: "$11.75", status: "Submitted" }
-];
+export function ClaimsScreen({ claims, onSelectTab }: ClaimsScreenProps) {
+  const pendingAmount = claims
+    .filter((claim) => claim.status !== "Approved")
+    .reduce((total, claim) => total + claim.amountInr, 0)
+    .toFixed(2);
 
-export function ClaimsScreen({ onSelectTab }: ClaimsScreenProps) {
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -26,7 +27,7 @@ export function ClaimsScreen({ onSelectTab }: ClaimsScreenProps) {
 
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Pending Approval</Text>
-          <Text style={styles.summaryValue}>$246.40</Text>
+          <Text style={styles.summaryValue}>INR {pendingAmount}</Text>
           <Pressable style={styles.primaryBtn}>
             <MaterialIcons color={colors.onPrimary} name="add" size={18} />
             <Text style={styles.primaryBtnText}>New Claim</Text>
@@ -36,7 +37,7 @@ export function ClaimsScreen({ onSelectTab }: ClaimsScreenProps) {
         <View style={styles.listCard}>
           <Text style={styles.sectionTitle}>Recent Claims</Text>
           <View style={styles.claimWrap}>
-            {CLAIMS.map((claim) => (
+            {claims.map((claim) => (
               <Pressable key={claim.id} style={styles.claimRow}>
                 <View style={styles.claimIconWrap}>
                   <MaterialIcons color={colors.primary} name="receipt-long" size={18} />
@@ -46,7 +47,7 @@ export function ClaimsScreen({ onSelectTab }: ClaimsScreenProps) {
                   <Text style={styles.claimMeta}>{claim.category}</Text>
                 </View>
                 <View style={styles.claimRight}>
-                  <Text style={styles.claimAmount}>{claim.amount}</Text>
+                  <Text style={styles.claimAmount}>INR {claim.amountInr.toFixed(2)}</Text>
                   <Text style={styles.claimStatus}>{claim.status}</Text>
                 </View>
               </Pressable>

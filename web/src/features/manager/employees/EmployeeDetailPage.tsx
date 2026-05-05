@@ -4,6 +4,7 @@ import Card from "../../../components/ui/Card";
 import Skeleton from "../../../components/ui/Skeleton";
 import EmptyState from "../../../components/ui/EmptyState";
 import RouteMapPlaceholder from "../../../components/maps/RouteMapPlaceholder";
+import TripRouteMap from "../../../components/maps/TripRouteMap";
 import { employees, tripHistory } from "../../../mocks/data";
 
 export default function EmployeeDetailPage() {
@@ -52,7 +53,11 @@ export default function EmployeeDetailPage() {
       </Card>
 
       <Card title="Route Map" subtitle="Selected day route visualization">
-        <RouteMapPlaceholder origin="Primary Office" destination="Latest client destination" />
+        {trips.length > 0 ? (
+          <TripRouteMap origin={trips[0].origin} destination={trips[0].destination} />
+        ) : (
+          <RouteMapPlaceholder origin="Primary Office" destination="Latest client destination" />
+        )}
       </Card>
 
       <Card title="Trip History" subtitle="Recent travel records">

@@ -1,118 +1,185 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useCallback, useEffect, useState } from "react";
 import { BottomNav, BottomTabKey } from "../components/BottomNav";
-import { StatCard } from "../components/StatCard";
-import { TimelineItem } from "../components/TimelineItem";
+import api, { TripData } from "../services/api";
 import { colors } from "../theme/colors";
 
-const MAP_IMAGE =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuBi3Zz9-QMgiBWsdSeM7Ioqed5BxZXeHSsHsVkGYxiSCs--LaijJhc9W3tbGMpmF6ytDm__lLXO8kU4DpsldY_3W3F0nru5ODxfublOcZXn983N682BnweHCMrXINuRDlnGkz99JY-E1CgWkQQ-N9Sp5QcxqXod507VxSEIkj42rkIMTZdGPsvaWAQ92Rao3IAAbCGgrBQVHWV5dLQKWDKMMCjgwTNzy1m9FnWWeNEcZBql0oNFSMCr-45qns0hgDUnr0FfWxmY6u6Z";
-
 type TripDetailsScreenProps = {
+  employeeName: string;
   onSelectTab: (tab: BottomTabKey) => void;
+  region: string;
 };
 
-export function TripDetailsScreen({ onSelectTab }: TripDetailsScreenProps) {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+type StatusConfig = { label: string; bg: string; text: string };
+function getStatusConfig(status: string): StatusConfig {
+  switch (status.toLowerCase()) {
+    case "completed":
+      return { label: "Completed", bg: "#D1FAE5", text: "#065F46" };
+    case "active":
+    case "in_progress":
+      return { label: "Active", bg: "#DBEAFE", text: "#1E40AF" };
+    case "paused":
+      return { label: "Paused", bg: "#FEF3C7", text: "#92400E" };
+    default:
+      return { label: status, bg: colors.surfaceContainerHigh, text: colors.onSurfaceVariant };
+  }
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
+export function TripDetailsScreen({ employeeName, onSelectTab, region }: TripDetailsScreenProps) {
+  const [trips, setTrips] = useState<TripData[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadTrips = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      const result = await api.trips.getHistory(1, 50);
+      setTrips(result.trips);
+      setTotal(result.total);
+    } catch {
+      setError("Failed to load trips. Pull down to retry.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTrips();
+  }, [loadTrips]);
+
+  // Summary stats
+  const completedTrips = trips.filter((t) => t.status === "completed");
+  const totalDistanceKm = completedTrips.reduce((s, t) => s + Number(t.total_distance_km), 0);
+  const totalDurationSecs = completedTrips.reduce((s, t) => s + Number(t.total_duration_seconds), 0);
+
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
       <StatusBar style="dark" />
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <IconButton icon="arrow-back" />
-          <Text style={styles.headerTitle}>Trip Details</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <IconButton icon="share" />
-          <IconButton icon="more-vert" />
-        </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.infoCard}>
-          <View style={styles.infoTop}>
-            <View style={styles.infoLeft}>
-              <Text style={styles.dateText}>OCTOBER 24, 2023</Text>
-              <Text style={styles.tripTitle}>Regional Site Inspection</Text>
-            </View>
-            <Text style={styles.badge}>COMPLETED</Text>
-          </View>
-          <View style={styles.locationRow}>
-            <MaterialIcons color={colors.onSurfaceVariant} name="location-on" size={16} />
-            <Text style={styles.locationText}>Seattle Metropolitan Area</Text>
-          </View>
-        </View>
-
-        <View style={styles.mapContainer}>
-          <Image source={{ uri: MAP_IMAGE }} style={styles.mapImage} />
-          <View style={styles.mapActions}>
-            <MapControl icon="layers" />
-            <MapControl icon="my-location" />
-          </View>
-          <View style={styles.routeBadge}>
-            <View>
-              <Text style={styles.routeLabel}>Route Length</Text>
-              <Text style={styles.routeValue}>12.4 km</Text>
-            </View>
-            <View style={styles.separator} />
-            <MaterialIcons color={colors.onPrimary} name="route" size={18} />
-          </View>
-        </View>
-
-        <View style={styles.statsGrid}>
-          <View style={styles.statsRow}>
-            <StatCard icon="straighten" label="Total Distance (km)" value="12.4" />
-            <StatCard icon="timer" label="Total Duration" value="02:45" />
-          </View>
-          <View style={styles.statsRow}>
-            <StatCard icon="speed" label="Avg Speed (km/h)" value="4.5" />
-            <StatCard icon="terrain" label="Elevation Gain" value="184m" />
-          </View>
-        </View>
-
-        <View style={styles.timelineCard}>
-          <Text style={styles.sectionTitle}>Trip Timeline</Text>
-          <View style={styles.timelineTrack} />
-          <View style={styles.timelineWrap}>
-            <TimelineItem
-              icon="play-arrow"
-              subtitle="HQ Main Entrance, Belltown"
-              time="09:15 AM"
-              title="Departure"
-              variant="start"
-            />
-            <TimelineItem
-              icon="location-on"
-              subtitle="North Queen Anne Warehouse"
-              time="10:30 AM"
-              title="Site Alpha Arrival"
-              variant="mid"
-            />
-            <TimelineItem
-              icon="stop"
-              subtitle="Commercial District Hub"
-              time="12:00 PM"
-              title="Trip End"
-              variant="end"
-            />
-          </View>
-        </View>
-
-        <View style={styles.attachmentsWrap}>
-          <AttachmentCard
-            icon="receipt-long"
-            subtitle="Fuel, Parking, Tolls"
-            title="3 Claims Filed"
-            tone="secondary"
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadTrips(true)}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
-          <AttachmentCard
-            icon="photo-library"
-            subtitle="Site documentation"
-            title="12 Photos"
-            tone="tertiary"
-          />
+        }
+      >
+        {/* Header */}
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.kicker}>FIELD HISTORY</Text>
+            <Text style={styles.pageTitle}>My Trips</Text>
+          </View>
+          <View style={styles.regionPill}>
+            <MaterialIcons color={colors.primary} name="location-on" size={13} />
+            <Text style={styles.regionText}>{region}</Text>
+          </View>
         </View>
+
+        {/* Summary banner */}
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryName}>{employeeName}</Text>
+          <View style={styles.summaryStats}>
+            <SummaryStat
+              icon="directions"
+              label="Total Trips"
+              value={String(completedTrips.length)}
+            />
+            <View style={styles.summaryDivider} />
+            <SummaryStat
+              icon="straighten"
+              label="Total Distance"
+              value={`${totalDistanceKm.toFixed(1)} km`}
+            />
+            <View style={styles.summaryDivider} />
+            <SummaryStat
+              icon="timer"
+              label="Total Time"
+              value={formatDuration(totalDurationSecs)}
+            />
+          </View>
+        </View>
+
+        {/* Trip list */}
+        <View style={styles.listHeader}>
+          <Text style={styles.sectionTitle}>ALL TRIPS</Text>
+          <Text style={styles.totalCount}>{total} record{total !== 1 ? "s" : ""}</Text>
+        </View>
+
+        {loading && (
+          <View style={styles.centerWrap}>
+            <ActivityIndicator color={colors.primary} size="large" />
+            <Text style={styles.loadingText}>Loading trips...</Text>
+          </View>
+        )}
+
+        {!loading && error && (
+          <View style={styles.centerWrap}>
+            <MaterialIcons color={colors.error} name="cloud-off" size={40} />
+            <Text style={styles.errorText}>{error}</Text>
+            <Pressable onPress={() => loadTrips()} style={styles.retryBtn}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {!loading && !error && trips.length === 0 && (
+          <View style={styles.centerWrap}>
+            <MaterialIcons color={colors.onSurfaceVariant} name="directions-off" size={48} />
+            <Text style={styles.emptyTitle}>No trips yet</Text>
+            <Text style={styles.emptySubtitle}>Start a trip from the Dashboard to see your history here.</Text>
+          </View>
+        )}
+
+        {!loading && !error && trips.map((trip) => (
+          <TripCard key={trip.id} trip={trip} />
+        ))}
       </ScrollView>
 
       <BottomNav activeTab="trips" onSelectTab={onSelectTab} />
@@ -120,267 +187,153 @@ export function TripDetailsScreen({ onSelectTab }: TripDetailsScreenProps) {
   );
 }
 
-type IconButtonProps = {
-  icon: keyof typeof MaterialIcons.glyphMap;
-};
+// ─── Trip Card ────────────────────────────────────────────────────────────────
 
-function IconButton({ icon }: IconButtonProps) {
-  return (
-    <Pressable style={styles.iconBtn}>
-      <MaterialIcons color={colors.indigo700} name={icon} size={22} />
-    </Pressable>
-  );
-}
-
-type MapControlProps = {
-  icon: keyof typeof MaterialIcons.glyphMap;
-};
-
-function MapControl({ icon }: MapControlProps) {
-  return (
-    <Pressable style={styles.mapControl}>
-      <MaterialIcons color={colors.onSurface} name={icon} size={20} />
-    </Pressable>
-  );
-}
-
-type AttachmentCardProps = {
-  icon: keyof typeof MaterialIcons.glyphMap;
-  title: string;
-  subtitle: string;
-  tone: "secondary" | "tertiary";
-};
-
-function AttachmentCard({ icon, title, subtitle, tone }: AttachmentCardProps) {
-  const iconWrapStyle = tone === "secondary" ? styles.secondaryIconWrap : styles.tertiaryIconWrap;
-  const iconColor = tone === "secondary" ? colors.onSecondaryContainer : colors.onTertiaryFixedVariant;
+function TripCard({ trip }: { trip: TripData }) {
+  const status = getStatusConfig(trip.status);
+  const distanceKm = Number(trip.total_distance_km).toFixed(2);
+  const avgSpeed = Number(trip.avg_speed_kmh).toFixed(1);
+  const duration = formatDuration(Number(trip.total_duration_seconds));
 
   return (
-    <Pressable style={styles.attachmentCard}>
-      <View style={[styles.attachmentIconWrap, iconWrapStyle]}>
-        <MaterialIcons color={iconColor} name={icon} size={24} />
+    <View style={styles.tripCard}>
+      {/* Top row: date + status */}
+      <View style={styles.tripCardTop}>
+        <View style={styles.tripDateWrap}>
+          <MaterialIcons color={colors.primary} name="calendar-today" size={14} />
+          <Text style={styles.tripDate}>{formatDate(trip.started_at)}</Text>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
+          <Text style={[styles.statusText, { color: status.text }]}>{status.label}</Text>
+        </View>
       </View>
-      <View style={styles.attachmentTextWrap}>
-        <Text style={styles.attachmentTitle}>{title}</Text>
-        <Text style={styles.attachmentSubtitle}>{subtitle}</Text>
+
+      {/* Time range */}
+      <View style={styles.timeRangeRow}>
+        <View style={styles.timeChip}>
+          <MaterialIcons color={colors.onSurfaceVariant} name="login" size={13} />
+          <Text style={styles.timeChipText}>{formatTime(trip.started_at)}</Text>
+        </View>
+        <View style={styles.timeArrow}>
+          <View style={styles.timeArrowLine} />
+          <MaterialIcons color={colors.outlineVariant} name="arrow-forward" size={14} />
+        </View>
+        <View style={styles.timeChip}>
+          <MaterialIcons color={colors.onSurfaceVariant} name="logout" size={13} />
+          <Text style={styles.timeChipText}>
+            {trip.ended_at ? formatTime(trip.ended_at) : "Ongoing"}
+          </Text>
+        </View>
       </View>
-      <MaterialIcons color={colors.outline} name="chevron-right" size={22} />
-    </Pressable>
+
+      {/* Stats row */}
+      <View style={styles.tripStatsRow}>
+        <TripStat icon="straighten" label="Distance" value={`${distanceKm} km`} />
+        <TripStat icon="timer" label="Duration" value={duration} />
+        <TripStat icon="speed" label="Avg Speed" value={`${avgSpeed} km/h`} />
+      </View>
+    </View>
   );
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SummaryStat({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: string }) {
+  return (
+    <View style={styles.summaryStat}>
+      <MaterialIcons color={colors.onPrimary} name={icon} size={16} />
+      <Text style={styles.summaryStatValue}>{value}</Text>
+      <Text style={styles.summaryStatLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function TripStat({ icon, label, value }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: string }) {
+  return (
+    <View style={styles.tripStat}>
+      <MaterialIcons color={colors.primary} name={icon} size={14} />
+      <Text style={styles.tripStatValue}>{value}</Text>
+      <Text style={styles.tripStatLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background
+  safeArea: { flex: 1, backgroundColor: colors.background },
+  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 140, gap: 12 },
+
+  // Header
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  kicker: { color: colors.onSurfaceVariant, fontSize: 11, fontWeight: "700", letterSpacing: 1.2 },
+  pageTitle: { color: colors.indigo900, fontSize: 32, fontWeight: "900", letterSpacing: -0.6 },
+  regionPill: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: colors.primaryFixed, borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 6,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 8,
-    backgroundColor: "rgba(248,249,250,0.85)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(197,197,212,0.3)"
+  regionText: { color: colors.primary, fontSize: 12, fontWeight: "700" },
+
+  // Summary card
+  summaryCard: {
+    backgroundColor: colors.primary, borderRadius: 18,
+    padding: 18, gap: 14,
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
+  summaryName: { color: colors.onPrimary, fontSize: 17, fontWeight: "800" },
+  summaryStats: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  summaryStat: { flex: 1, alignItems: "center", gap: 4 },
+  summaryStatValue: { color: colors.onPrimary, fontSize: 18, fontWeight: "900", letterSpacing: -0.4 },
+  summaryStatLabel: { color: "rgba(255,255,255,0.7)", fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  summaryDivider: { width: 1, height: 36, backgroundColor: "rgba(255,255,255,0.2)" },
+
+  // List header
+  listHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
+  sectionTitle: { color: colors.onSurfaceVariant, fontSize: 11, fontWeight: "800", letterSpacing: 1.2 },
+  totalCount: { color: colors.onSurfaceVariant, fontSize: 11, fontWeight: "700" },
+
+  // States
+  centerWrap: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 12 },
+  loadingText: { color: colors.onSurfaceVariant, fontSize: 13, fontWeight: "600" },
+  errorText: { color: colors.error, fontSize: 13, fontWeight: "600", textAlign: "center" },
+  emptyTitle: { color: colors.onSurface, fontSize: 16, fontWeight: "800" },
+  emptySubtitle: { color: colors.onSurfaceVariant, fontSize: 13, textAlign: "center", lineHeight: 19, paddingHorizontal: 24 },
+  retryBtn: {
+    marginTop: 4, backgroundColor: colors.primary, borderRadius: 999,
+    paddingHorizontal: 20, paddingVertical: 9,
   },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center"
-  },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-    color: colors.indigo900
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 140,
-    gap: 16
-  },
-  infoCard: {
+  retryBtnText: { color: colors.onPrimary, fontSize: 13, fontWeight: "800" },
+
+  // Trip card
+  tripCard: {
     backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 14,
-    padding: 18,
-    gap: 10
+    borderRadius: 16, padding: 16, gap: 12,
+    borderWidth: 1, borderColor: colors.outlineVariant,
   },
-  infoTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10
-  },
-  infoLeft: {
-    flexShrink: 1,
-    gap: 4
-  },
-  dateText: {
-    color: colors.onSurfaceVariant,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    fontWeight: "700"
-  },
-  tripTitle: {
-    color: colors.onSurface,
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: "900",
-    letterSpacing: -0.6
-  },
-  badge: {
-    backgroundColor: colors.tertiaryFixed,
-    color: colors.onTertiaryFixed,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    fontWeight: "800",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999
-  },
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4
-  },
-  locationText: {
-    color: colors.onSurfaceVariant,
-    fontSize: 13
-  },
-  mapContainer: {
-    borderRadius: 14,
-    overflow: "hidden",
-    backgroundColor: colors.surfaceContainerHigh,
-    height: 210,
-    position: "relative"
-  },
-  mapImage: {
-    width: "100%",
-    height: "100%"
-  },
-  mapActions: {
-    position: "absolute",
-    right: 12,
-    top: 12,
-    gap: 8
-  },
-  mapControl: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  routeBadge: {
-    position: "absolute",
-    left: 12,
-    bottom: 12,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "rgba(30,55,162,0.92)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10
-  },
-  routeLabel: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase"
-  },
-  routeValue: {
-    color: colors.onPrimary,
-    fontSize: 16,
-    fontWeight: "800"
-  },
-  separator: {
-    width: 1,
-    height: 20,
-    backgroundColor: "rgba(255,255,255,0.3)"
-  },
-  statsGrid: {
-    gap: 12
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 12
-  },
-  timelineCard: {
+  tripCardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  tripDateWrap: { flexDirection: "row", alignItems: "center", gap: 5 },
+  tripDate: { color: colors.onSurface, fontSize: 14, fontWeight: "800" },
+  statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  statusText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.3 },
+
+  // Time range
+  timeRangeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  timeChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
     backgroundColor: colors.surfaceContainerLow,
-    borderRadius: 14,
-    padding: 18,
-    position: "relative"
+    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5,
   },
-  sectionTitle: {
-    color: colors.onSurfaceVariant,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    fontWeight: "800",
-    marginBottom: 18
+  timeChipText: { color: colors.onSurface, fontSize: 12, fontWeight: "700" },
+  timeArrow: { flex: 1, flexDirection: "row", alignItems: "center" },
+  timeArrowLine: { flex: 1, height: 1, backgroundColor: colors.outlineVariant },
+
+  // Trip stats
+  tripStatsRow: {
+    flexDirection: "row", justifyContent: "space-between",
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: 12, padding: 12,
   },
-  timelineTrack: {
-    position: "absolute",
-    left: 29,
-    top: 54,
-    bottom: 24,
-    width: 2,
-    backgroundColor: "rgba(197,197,212,0.45)"
-  },
-  timelineWrap: {
-    gap: 24
-  },
-  attachmentsWrap: {
-    gap: 12
-  },
-  attachmentCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 14,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12
-  },
-  attachmentIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  secondaryIconWrap: {
-    backgroundColor: colors.secondaryContainer
-  },
-  tertiaryIconWrap: {
-    backgroundColor: colors.tertiaryFixed
-  },
-  attachmentTextWrap: {
-    flex: 1
-  },
-  attachmentTitle: {
-    color: colors.onSurface,
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: -0.2
-  },
-  attachmentSubtitle: {
-    color: colors.onSurfaceVariant,
-    fontSize: 12,
-    marginTop: 2
-  },
+  tripStat: { flex: 1, alignItems: "center", gap: 3 },
+  tripStatValue: { color: colors.onSurface, fontSize: 15, fontWeight: "900", letterSpacing: -0.3 },
+  tripStatLabel: { color: colors.onSurfaceVariant, fontSize: 10, fontWeight: "700", textTransform: "uppercase" },
 });

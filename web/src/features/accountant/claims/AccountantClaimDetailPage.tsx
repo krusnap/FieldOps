@@ -1,13 +1,41 @@
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Card from "../../../components/ui/Card";
 import Badge from "../../../components/ui/Badge";
 import EmptyState from "../../../components/ui/EmptyState";
-import { claims } from "../../../mocks/data";
+import apiClient from "../../../lib/apiClient";
 
 export default function AccountantClaimDetailPage() {
   const { claimId } = useParams();
-  const claim = useMemo(() => claims.find((item) => item.id === claimId), [claimId]);
+  const [claim, setClaim] = useState<any | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        if (!claimId) return;
+        const data = await apiClient.getClaim(claimId);
+        if (!mounted) return;
+        setClaim(data ?? null);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load claim detail", err);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [claimId]);
+
+  if (isLoading) {
+    return <p>Loading claim...</p>;
+  }
 
   if (!claim) {
     return <EmptyState title="Claim Not Found" subtitle="Return to claims table and try again." />;
@@ -18,11 +46,11 @@ export default function AccountantClaimDetailPage() {
       <div className="metrics-grid">
         <p>
           Employee
-          <strong>{claim.employeeName}</strong>
+          <strong>{claim.employeeName || claim.employee_email || claim.user_email}</strong>
         </p>
         <p>
           Amount
-          <strong>${claim.amount.toFixed(2)}</strong>
+          <strong>${(claim.amount ?? 0).toFixed(2)}</strong>
         </p>
         <p>
           Status
@@ -30,7 +58,7 @@ export default function AccountantClaimDetailPage() {
         </p>
         <p>
           Distance
-          <strong>{claim.distanceKm} km</strong>
+          <strong>{claim.distanceKm ?? claim.distance_km ?? 0} km</strong>
         </p>
       </div>
       <div className="top-space">

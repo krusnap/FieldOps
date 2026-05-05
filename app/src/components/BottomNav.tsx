@@ -2,7 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../theme/colors";
 
-export type BottomTabKey = "dashboard" | "tracking" | "trips" | "claims" | "profile";
+export type BottomTabKey = "dashboard" | "trips" | "claims" | "profile";
 
 type BottomNavProps = {
   activeTab: BottomTabKey;
@@ -17,8 +17,7 @@ type NavItem = {
 
 const ITEMS: NavItem[] = [
   { key: "dashboard", label: "Dashboard", icon: "dashboard" },
-  { key: "tracking", label: "Tracking", icon: "explore" },
-  { key: "trips", label: "Trips", icon: "route" },
+  { key: "trips", label: "Trips", icon: "directions" },
   { key: "claims", label: "Claims", icon: "receipt-long" },
   { key: "profile", label: "Profile", icon: "person" }
 ];

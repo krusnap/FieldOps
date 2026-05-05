@@ -6,17 +6,23 @@ import { BottomNav, BottomTabKey } from "../components/BottomNav";
 import { colors } from "../theme/colors";
 
 type ProfileScreenProps = {
+  employeeId: string;
+  employeeName: string;
   onSelectTab: (tab: BottomTabKey) => void;
+  onLogout: () => void;
+  region: string;
+  roleTitle: string;
 };
 
-const SETTINGS = [
-  { icon: "badge", label: "Employee Profile", value: "ID 48291" },
-  { icon: "security", label: "Security", value: "2FA enabled" },
-  { icon: "notifications", label: "Alerts", value: "Operational + Claims" },
-  { icon: "language", label: "Region", value: "Pacific Northwest" }
-];
+export function ProfileScreen({ employeeId, employeeName, onLogout, onSelectTab, region, roleTitle }: ProfileScreenProps) {
+  const displayId = employeeId.startsWith("EMP-") ? employeeId : `EMP-${employeeId.slice(0, 4).toUpperCase()}`;
+  const settings = [
+    { icon: "badge", label: "Employee Profile", value: displayId },
+    { icon: "security", label: "Security", value: "2FA enabled" },
+    { icon: "notifications", label: "Alerts", value: "Trip + Claims" },
+    { icon: "language", label: "Region", value: region }
+  ];
 
-export function ProfileScreen({ onSelectTab }: ProfileScreenProps) {
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -27,11 +33,11 @@ export function ProfileScreen({ onSelectTab }: ProfileScreenProps) {
 
         <View style={styles.profileHero}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>KR</Text>
+            <Text style={styles.avatarText}>{employeeName.slice(0, 2).toUpperCase()}</Text>
           </View>
           <View style={styles.heroTextWrap}>
-            <Text style={styles.name}>Krush</Text>
-            <Text style={styles.role}>Regional Field Ops Manager</Text>
+            <Text style={styles.name}>{employeeName}</Text>
+            <Text style={styles.role}>{roleTitle}</Text>
           </View>
           <Pressable style={styles.editBtn}>
             <MaterialIcons color={colors.indigo700} name="edit" size={18} />
@@ -41,7 +47,7 @@ export function ProfileScreen({ onSelectTab }: ProfileScreenProps) {
         <View style={styles.settingsCard}>
           <Text style={styles.sectionTitle}>Preferences</Text>
           <View style={styles.settingsWrap}>
-            {SETTINGS.map((item) => (
+            {settings.map((item) => (
               <Pressable key={item.label} style={styles.settingRow}>
                 <View style={styles.settingIconWrap}>
                   <MaterialIcons color={colors.primary} name={item.icon as never} size={18} />
@@ -56,7 +62,7 @@ export function ProfileScreen({ onSelectTab }: ProfileScreenProps) {
           </View>
         </View>
 
-        <Pressable style={styles.logoutBtn}>
+        <Pressable onPress={onLogout} style={styles.logoutBtn}>
           <MaterialIcons color={colors.error} name="logout" size={18} />
           <Text style={styles.logoutText}>Log out</Text>
         </Pressable>

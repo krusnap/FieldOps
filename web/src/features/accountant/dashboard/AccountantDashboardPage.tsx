@@ -1,43 +1,68 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
 import DonutStatusChart from "../../../components/charts/DonutStatusChart";
 import BarDistanceChart from "../../../components/charts/BarDistanceChart";
-import { claims } from "../../../mocks/data";
+import apiClient from "../../../lib/apiClient";
 
 export default function AccountantDashboardPage() {
-  const approved = claims.filter((item) => item.status === "approved").length;
-  const rejected = claims.filter((item) => item.status === "rejected").length;
-  const pending = claims.filter((item) => item.status === "pending").length;
+  const [claimsList, setClaimsList] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const approvedAmount = claims
-    .filter((item) => item.status === "approved")
-    .reduce((total, item) => total + item.amount, 0);
+  useEffect(() => {
+    let mounted = true;
 
-  const rejectedAmount = claims
-    .filter((item) => item.status === "rejected")
-    .reduce((total, item) => total + item.amount, 0);
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        const claimsData = await apiClient.getClaims();
+        if (!mounted) return;
+        setClaimsList(claimsData ?? []);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load claims for accountant dashboard", err);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const approved = claimsList.filter((item) => item.status === "approved").length;
+  const rejected = claimsList.filter((item) => item.status === "rejected").length;
+  const pending = claimsList.filter((item) => item.status === "pending").length;
+
+  const approvedAmount = claimsList.filter((item) => item.status === "approved").reduce((total, item) => total + (item.amount ?? 0), 0);
+  const rejectedAmount = claimsList.filter((item) => item.status === "rejected").reduce((total, item) => total + (item.amount ?? 0), 0);
 
   const reimbursementDistance = [
     {
       label: "Approved KM",
-      value: claims.filter((item) => item.status === "approved").reduce((sum, item) => sum + item.distanceKm, 0),
+      value: claimsList.filter((item) => item.status === "approved").reduce((sum, item) => sum + (item.distanceKm ?? 0), 0),
     },
     {
       label: "Rejected KM",
-      value: claims.filter((item) => item.status === "rejected").reduce((sum, item) => sum + item.distanceKm, 0),
+      value: claimsList.filter((item) => item.status === "rejected").reduce((sum, item) => sum + (item.distanceKm ?? 0), 0),
     },
     {
       label: "Pending KM",
-      value: claims.filter((item) => item.status === "pending").reduce((sum, item) => sum + item.distanceKm, 0),
+      value: claimsList.filter((item) => item.status === "pending").reduce((sum, item) => sum + (item.distanceKm ?? 0), 0),
     },
   ];
 
-  const latestClaims = [...claims].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const latestClaims = [...claimsList].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, 5);
 
   return (
     <div className="stack-24">
+      {isLoading ? <p>Loading accountant dashboard...</p> : null}
+
       <section className="stats-grid">
         <Card title="Total Approved Claims">
           <p className="kpi success">{approved}</p>
@@ -77,9 +102,9 @@ export default function AccountantDashboardPage() {
             <tbody>
               {latestClaims.map((claim) => (
                 <tr key={claim.id}>
-                  <td>{claim.employeeName}</td>
+                  <td>{claim.employeeName || claim.employee_email || claim.user_email}</td>
                   <td>{claim.date}</td>
-                  <td>${claim.amount.toFixed(2)}</td>
+                  <td>${(claim.amount ?? 0).toFixed(2)}</td>
                   <td>
                     <Badge status={claim.status} />
                   </td>
