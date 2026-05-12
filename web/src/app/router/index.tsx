@@ -15,7 +15,6 @@ import UserManagementPage from "../../features/admin/users/UserManagementPage";
 import ManagerControlPage from "../../features/admin/manager-control/ManagerControlPage";
 import PermissionsPage from "../../features/admin/permissions/PermissionsPage";
 import AdminAnalyticsPage from "../../features/admin/analytics/AdminAnalyticsPage";
-import SystemMonitoringPage from "../../features/admin/system-monitoring/SystemMonitoringPage";
 import DataViewerPage from "../../features/admin/data-viewer/DataViewerPage";
 
 import AccountantDashboardPage from "../../features/accountant/dashboard/AccountantDashboardPage";
@@ -60,7 +59,6 @@ export const appRouter = createBrowserRouter([
       { path: "manager-control", element: <ManagerControlPage /> },
       { path: "permissions", element: <PermissionsPage /> },
       { path: "analytics", element: <AdminAnalyticsPage /> },
-      { path: "system", element: <SystemMonitoringPage /> },
       { path: "data-viewer", element: <DataViewerPage /> },
     ],
   },

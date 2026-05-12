@@ -136,6 +136,12 @@ export interface EmployeeDashboardData {
   weeklyCompliance: string;
   todayTrips: number;
   totalClaims: number;
+  assignedManager?: { id: string; full_name: string; email: string } | null;
+  profile?: {
+    full_name: string | null;
+    rate_per_km: number | null;
+    email: string | null;
+  };
 }
 
 // ─── Axios Instance ───────────────────────────────────────────────────────────

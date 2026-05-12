@@ -31,6 +31,11 @@ export const apiClient = {
     return data;
   },
 
+  async getHealth(): Promise<{ status: string; timestamp: string }> {
+    const { data } = await client.get("/health");
+    return data;
+  },
+
   // ─── Dashboard ────────────────────────────────────────────────────
   async getManagerDashboard() {
     const { data } = await client.get("/api/dashboard/manager");
@@ -118,9 +123,69 @@ export const apiClient = {
     return data.data;
   },
 
-  async overrideClaim(id: string, payload: { amount_inr?: number; notes?: string; category?: string }) {
+  async overrideClaim(id: string, payload: { distance_km?: number; notes?: string; category?: string }) {
     const { data } = await client.patch(`/api/claims/${id}/override`, payload);
     return data.data;
+  },
+
+  // ─── Admin Dashboard ───────────────────────────────────────────────────────
+  async getAdminDashboard() {
+    const { data } = await client.get("/api/dashboard/admin");
+    return data.data;
+  },
+
+  // ─── Accountant Dashboard ──────────────────────────────────────────────────
+  async getAccountantDashboard() {
+    const { data } = await client.get("/api/dashboard/accountant");
+    return data.data;
+  },
+
+  // ─── Admin User Management ─────────────────────────────────────────────────
+  async getAllUsers() {
+    const { data } = await client.get("/api/employees/all");
+    return data.data ?? [];
+  },
+
+  async createUser(payload: {
+    full_name: string;
+    email: string;
+    password: string;
+    role: "EMPLOYEE" | "MANAGER" | "ADMIN" | "ACCOUNTANT";
+    rate_per_km?: number;
+  }) {
+    const { data } = await client.post("/api/employees/create", payload);
+    return data.data;
+  },
+
+  async updateUser(id: string, payload: {
+    full_name?: string;
+    role?: "EMPLOYEE" | "MANAGER" | "ADMIN" | "ACCOUNTANT";
+    rate_per_km?: number;
+    is_active?: boolean;
+  }) {
+    const { data } = await client.patch(`/api/employees/${id}`, payload);
+    return data.data;
+  },
+
+  async deactivateUser(id: string) {
+    const { data } = await client.delete(`/api/employees/${id}/deactivate`);
+    return data;
+  },
+
+  // ─── Admin Assignments ────────────────────────────────────────────────────
+  async getAssignments() {
+    const { data } = await client.get("/api/employees/assignments");
+    return data.data ?? [];
+  },
+
+  async createAssignment(employee_id: string, manager_id: string) {
+    const { data } = await client.post("/api/employees/assignments", { employee_id, manager_id });
+    return data.data;
+  },
+
+  async removeAssignment(id: string) {
+    const { data } = await client.delete(`/api/employees/assignments/${id}`);
+    return data;
   },
 };
 

@@ -124,7 +124,7 @@ registerLocationSocket(io);
 // ─── Start Server ────────────────────────────────────────────────────────────
 
 httpServer.listen(PORT, "0.0.0.0", () => {
-  logger.info(`FT-TRMS API running on http://0.0.0.0:${PORT}`);
+  logger.info(`FieldOps API running on http://0.0.0.0:${PORT}`);
   logger.info(`CORS origins: ${corsOrigins.join(", ")}`);
   logger.info("Socket.IO ready for connections");
 });

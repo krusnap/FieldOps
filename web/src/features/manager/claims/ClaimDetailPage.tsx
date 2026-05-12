@@ -1,110 +1,59 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Card from "../../../components/ui/Card";
 import Badge from "../../../components/ui/Badge";
-import Button from "../../../components/ui/Button";
 import EmptyState from "../../../components/ui/EmptyState";
-import ConfirmDialog from "../../../components/feedback/ConfirmDialog";
-import ToastHost from "../../../components/feedback/ToastHost";
-import RouteMapPlaceholder from "../../../components/maps/RouteMapPlaceholder";
-import { useToast } from "../../../hooks/useToast";
-import { claims } from "../../../mocks/data";
-import { ClaimStatus } from "../../../types/domain";
+import apiClient from "../../../lib/apiClient";
 
 export default function ClaimDetailPage() {
-  const { claimId } = useParams();
-  const claim = useMemo(() => claims.find((item) => item.id === claimId), [claimId]);
+  const { claimId } = useParams<{ claimId: string }>();
+  const [claim, setClaim] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [status, setStatus] = useState<ClaimStatus>(claim?.status ?? "pending");
-  const [dialog, setDialog] = useState<"approve" | "reject" | null>(null);
-  const { pushToast } = useToast();
+  useEffect(() => {
+    if (!claimId) return;
+    setLoading(true);
+    apiClient.getClaim(claimId)
+      .then(setClaim)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [claimId]);
+
+  if (loading) return <p style={{ padding: 24 }}>Loading claim...</p>;
 
   if (!claim) {
-    return <EmptyState title="Claim Not Found" subtitle="Go back to the claims review list and try again." />;
+    return <EmptyState title="Claim Not Found" subtitle="Go back to claims review and try again." />;
   }
 
-  const commitAction = (action: "approve" | "reject") => {
-    const nextStatus: ClaimStatus = action === "approve" ? "approved" : "rejected";
-    setStatus(nextStatus);
-    pushToast({
-      title: action === "approve" ? "Claim Approved" : "Claim Rejected",
-      message: `${claim.employeeName}'s claim has been marked as ${nextStatus}.`,
-      tone: action === "approve" ? "success" : "danger",
-    });
-    setDialog(null);
-  };
+  const employeeName = claim.users?.full_name ?? claim.user_email ?? "Unknown Employee";
+  const amountInr    = Number(claim.amount_inr ?? 0);
+  const distanceKm   = Number(claim.distance_km ?? 0);
 
   return (
     <div className="stack-24">
-      <ToastHost />
-      <Card title={`Claim ${claim.id}`} subtitle={`${claim.employeeName} · ${claim.date}`} action={<Badge status={status} />}>
+      <Card
+        title={`Claim — ${new Date(claim.created_at).toLocaleDateString("en-IN")}`}
+        subtitle={`${employeeName} · ${claim.category ?? "Trip Reimbursement"}`}
+        action={<Badge status={claim.status as any} />}
+      >
         <div className="metrics-grid">
-          <p>
-            Amount <strong>${claim.amount.toFixed(2)}</strong>
-          </p>
-          <p>
-            Distance <strong>{claim.distanceKm} km</strong>
-          </p>
-          <p>
-            Duration <strong>{claim.durationMin} min</strong>
-          </p>
-          <p>
-            Employee <strong>{claim.employeeName}</strong>
-          </p>
+          <p>Amount     <strong>₹{amountInr.toFixed(2)}</strong></p>
+          <p>Distance   <strong>{distanceKm.toFixed(1)} km</strong></p>
+          <p>Rate       <strong>₹{Number(claim.rate_per_km ?? 0).toFixed(2)}/km</strong></p>
+          <p>Status     <strong>{claim.status}</strong></p>
         </div>
-      </Card>
 
-      <Card title="Route Taken" subtitle="Map placeholder for field route proof">
-        <RouteMapPlaceholder origin={claim.route.origin} destination={claim.route.destination} />
-      </Card>
-
-      <Card title="Manager Decision" subtitle="Approve or reject this claim submission">
-        <p className="muted">Reason: {claim.reason}</p>
-        {status === "pending" ? (
-          <div className="row gap-12 top-space">
-            <Button variant="success" onClick={() => setDialog("approve")}>
-              Approve
-            </Button>
-            <Button variant="danger" onClick={() => setDialog("reject")}>
-              Reject
-            </Button>
-            <Link to="/manager/claims" className="link-inline">
-              Back to Claims Review
-            </Link>
-          </div>
-        ) : (
-          <div className="top-space stack-16">
-            <p className="muted">
-              Decision finalized. This claim is marked as <strong>{status}</strong> and cannot be changed here.
-            </p>
-            <div>
-              <Link to="/manager/claims" className="link-inline">
-                Back to Claims Review
-              </Link>
-            </div>
+        {claim.notes && (
+          <div style={{ marginTop: 16, padding: "12px 14px", background: "var(--bg-subtle)", borderRadius: 10 }}>
+            <p style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: 4 }}>NOTE</p>
+            <p style={{ fontSize: "0.92rem" }}>{claim.notes}</p>
           </div>
         )}
       </Card>
 
-      <ConfirmDialog
-        open={dialog === "approve"}
-        title="Approve Claim"
-        description="This action will move the claim into approved state for reimbursement processing."
-        confirmText="Approve Claim"
-        confirmVariant="success"
-        onCancel={() => setDialog(null)}
-        onConfirm={() => commitAction("approve")}
-      />
-
-      <ConfirmDialog
-        open={dialog === "reject"}
-        title="Reject Claim"
-        description="This action will mark the claim as rejected. The employee will need to resubmit with corrections."
-        confirmText="Reject Claim"
-        confirmVariant="danger"
-        onCancel={() => setDialog(null)}
-        onConfirm={() => commitAction("reject")}
-      />
+      <div className="top-space">
+        <Link to="/manager/claims" className="link-inline">← Back to Claims Review</Link>
+      </div>
     </div>
   );
 }

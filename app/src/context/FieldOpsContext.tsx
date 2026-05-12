@@ -24,6 +24,7 @@ const LOCATION_BATCH_SIZE = 4;
 
 type FieldOpsContextValue = {
   alerts: FieldAlerts;
+  assignedManager: { id: string; full_name: string; email: string } | null;
   claims: EmployeeClaim[];
   currentLocation: LocationPoint | null;
   elapsedSeconds: number;
@@ -68,6 +69,9 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
   const [tripHistory, setTripHistory] = useState<TripRecord[]>([]);
   const [weeklyComplianceVal, setWeeklyComplianceVal] = useState("0%");
   const [todayDistanceFromServer, setTodayDistanceFromServer] = useState(0);
+  const [assignedManager, setAssignedManager] = useState<{ id: string; full_name: string; email: string } | null>(null);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+  const [pendingClaimAmountInrFromServer, setPendingClaimAmountInrFromServer] = useState(0);
 
   const [network, setNetwork] = useState<NetworkState>({ isOnline: true, isSyncing: false, lastSyncedAt: null });
   const [alerts, setAlerts] = useState<FieldAlerts>({ outsideGeofence: false, offline: false, gpsDisabled: false, lowBattery: false });
@@ -102,7 +106,7 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
         id: c.id,
         category: c.category,
         amountInr: Number(c.amount_inr),
-        status: c.status === "approved" ? "Approved" : c.status === "rejected" ? "Submitted" : "Pending",
+        status: c.status === "approved" ? "Approved" : c.status === "rejected" ? "Rejected" : "Pending",
         tripId: c.trip_id ?? undefined,
         createdAt: c.created_at,
       }));
@@ -110,13 +114,24 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
     } catch { /* keep existing claims */ }
   }, []);
 
-  // ─── Fetch dashboard stats ──────────────────────────────────────────────────
+  // ─── Fetch dashboard stats (also patches live user profile from DB) ─────────
   const fetchDashboardStats = useCallback(async () => {
     try {
       const stats = await api.dashboard.getEmployee();
       if (stats) {
         setWeeklyComplianceVal(stats.weeklyCompliance);
         setTodayDistanceFromServer(stats.todayDistanceKm);
+        setPendingClaimAmountInrFromServer(stats.pendingClaimAmountInr);
+        if (typeof stats.totalClaims === "number") {
+          setPendingActionsCount(stats.totalClaims);
+        }
+        if (stats.assignedManager) {
+          setAssignedManager(stats.assignedManager);
+        }
+        // Patch user name from authoritative DB profile (replaces stale user_metadata)
+        if (stats.profile?.full_name) {
+          setUser((prev) => prev ? { ...prev, name: stats.profile!.full_name! } : prev);
+        }
       }
     } catch { /* ignore */ }
   }, []);
@@ -269,15 +284,12 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
             name: (u.user_metadata as any)?.full_name ?? u.email?.split("@")[0] ?? "Employee",
             title: (u.user_metadata as any)?.title ?? "Field Employee",
             region: (u.user_metadata as any)?.region ?? "Unknown",
-            pendingActions: 0,
+            pendingActions: pendingActionsCount,
             weeklyCompliance: "0%",
-            tasks: [],
-            checkpoints: [],
             geofenceCenter: (u.user_metadata as any)?.geofenceCenter ?? { latitude: 0, longitude: 0 },
             geofenceRadiusMeters: (u.user_metadata as any)?.geofenceRadiusMeters ?? 25000
           });
           void connectSocket();
-          void fetchClaims();
           void fetchDashboardStats();
 
           // Check for active trip
@@ -302,15 +314,12 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
                 name: result.user.name ?? result.user.full_name ?? "Employee",
                 title: result.user.title ?? "Field Employee",
                 region: result.user.region ?? "Unknown",
-                pendingActions: 0,
+                pendingActions: pendingActionsCount,
                 weeklyCompliance: "0%",
-                tasks: [],
-                checkpoints: [],
                 geofenceCenter: { latitude: 0, longitude: 0 },
                 geofenceRadiusMeters: 25000
               });
               void connectSocket();
-              void fetchClaims();
               void fetchDashboardStats();
             } else { await api.logout(); }
           }
@@ -373,13 +382,13 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
           name: (u.user_metadata as any)?.full_name ?? u.email?.split("@")[0] ?? email.split("@")[0],
           title: (u.user_metadata as any)?.title ?? "Field Employee",
           region: (u.user_metadata as any)?.region ?? "Unknown",
-          pendingActions: 0, weeklyCompliance: "0%", tasks: [], checkpoints: [],
+          pendingActions: 0,
+          weeklyCompliance: "0%",
           geofenceCenter: (u.user_metadata as any)?.geofenceCenter ?? { latitude: 0, longitude: 0 },
           geofenceRadiusMeters: (u.user_metadata as any)?.geofenceRadiusMeters ?? 25000
         });
         resetTripDraft();
         void connectSocket();
-        void fetchClaims();
         void fetchDashboardStats();
         return null;
       }
@@ -388,7 +397,7 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
       console.error("Login error:", error);
       return "Login failed. Please try again.";
     }
-  }, [resetTripDraft, fetchClaims, fetchDashboardStats]);
+  }, [resetTripDraft, fetchDashboardStats]);
 
   // ─── Logout ──────────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
@@ -502,10 +511,9 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
   }, [distanceKm, elapsedSeconds, path, tripId, tripStartTime, tripStatus, fetchClaims, fetchDashboardStats]);
 
   // ─── Computed Values ────────────────────────────────────────────────────────
-  const pendingClaimAmountInr = useMemo(
-    () => claims.filter((c) => c.status !== "Approved").reduce((t, c) => t + c.amountInr, 0),
-    [claims]
-  );
+  const pendingClaimAmountInr = isUsingBackend.current && pendingClaimAmountInrFromServer > 0
+    ? pendingClaimAmountInrFromServer
+    : claims.filter((c) => c.status !== "Approved").reduce((t, c) => t + c.amountInr, 0);
 
   const todayDistanceKm = useMemo(() => {
     if (isUsingBackend.current && todayDistanceFromServer > 0) {
@@ -523,7 +531,7 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
 
   const value = useMemo<FieldOpsContextValue>(
     () => ({
-      alerts, claims, currentLocation, elapsedSeconds, endTrip,
+      alerts, assignedManager, claims, currentLocation, elapsedSeconds, endTrip,
       gpsPointsCount: path.length, isAuthenticated: !!user, isInitializing,
       login, logout, network, path, pauseTrip, pendingClaimAmountInr,
       primaryActionLabel, refreshCurrentLocation, resumeTrip, startTrip,
@@ -531,7 +539,7 @@ export function FieldOpsProvider({ children }: FieldOpsProviderProps) {
       weeklyCompliance: isUsingBackend.current ? weeklyComplianceVal : (user?.weeklyCompliance ?? "0%")
     }),
     [
-      alerts, claims, currentLocation, elapsedSeconds, endTrip, isInitializing,
+      alerts, assignedManager, claims, currentLocation, elapsedSeconds, endTrip, isInitializing,
       login, network, path, pauseTrip, pendingClaimAmountInr, primaryActionLabel,
       refreshCurrentLocation, resumeTrip, startTrip, todayDistanceKm, tripHistory,
       tripId, tripStatus, user, logout, weeklyComplianceVal

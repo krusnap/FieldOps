@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Card from "../../../components/ui/Card";
 import Badge from "../../../components/ui/Badge";
 import Tabs from "../../../components/ui/Tabs";
@@ -79,7 +79,7 @@ export default function ClaimsReviewPage() {
   const [loading, setLoading] = useState(true);
   const [showNewClaimModal, setShowNewClaimModal] = useState(false);
   const [overrideTarget, setOverrideTarget] = useState<ClaimItem | null>(null);
-  const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([]);
+  const [employees, setEmployees] = useState<{ id: string; displayName: string }[]>([]);
 
   const loadBundles = useCallback(async () => {
     try {
@@ -101,7 +101,14 @@ export default function ClaimsReviewPage() {
 
   // Load employees for new claim modal
   useEffect(() => {
-    apiClient.getEmployees().then((data: any[]) => setEmployees(data)).catch(() => {});
+    apiClient.getEmployees().then((data: any[]) =>
+      setEmployees(
+        data.map((e) => ({
+          id: e.id,
+          displayName: e.full_name ?? e.email ?? e.id,
+        }))
+      )
+    ).catch(() => {});
   }, []);
 
   const handleExpand = async (bundleId: string) => {
@@ -139,7 +146,7 @@ export default function ClaimsReviewPage() {
       <Card
         title="Claims Review"
         subtitle="Review employee daily claim bundles. Approve or reject per day."
-        actions={
+        action={
           <Button variant="primary" onClick={() => setShowNewClaimModal(true)}>
             + New Claim
           </Button>
@@ -376,22 +383,187 @@ function OverrideClaimModal({ claim, onClose, onOverridden }: OverrideClaimModal
   );
 }
 
-// ─── Override claim helper (now unused — kept for reference) ──────────────────
+// ─── Override claim helper (legacy — use OverrideClaimModal instead) ──────────
 async function handleOverrideClaim(claimId: string) {
-  const newAmount = prompt("Enter corrected amount (₹):");
-  if (!newAmount || isNaN(Number(newAmount))) return;
+  const distKm = prompt("Enter corrected distance (km):");
+  if (!distKm || isNaN(Number(distKm))) return;
   const note = prompt("Add a note (optional):") ?? "";
   try {
-    await apiClient.overrideClaim(claimId, { amount_inr: Number(newAmount), notes: note });
+    await apiClient.overrideClaim(claimId, { distance_km: Number(distKm), notes: note });
     alert("Claim overridden and moved to pending.");
     window.location.reload();
   } catch { alert("Failed to override claim."); }
 }
 
+// ─── Custom Employee Picker ───────────────────────────────────────────────────
+
+function EmployeePicker({
+  employees,
+  value,
+  onChange,
+}: {
+  employees: { id: string; displayName: string }[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+
+  const selected = employees.find((e) => e.id === value);
+  const filtered = employees.filter((e) =>
+    e.displayName.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const openDropdown = () => {
+    if (triggerRef.current) {
+      setRect(triggerRef.current.getBoundingClientRect());
+    }
+    setOpen(true);
+    setSearch("");
+  };
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (triggerRef.current && !triggerRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={openDropdown}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          border: open ? "1.5px solid var(--primary)" : "1px solid var(--input-border)",
+          borderRadius: 10,
+          padding: "9px 12px",
+          font: "inherit",
+          color: selected ? "var(--input-text)" : "var(--text-muted)",
+          background: "var(--input-bg)",
+          cursor: "pointer",
+          textAlign: "left",
+          boxShadow: open ? "0 0 0 3px rgba(var(--primary-rgb),0.12)" : "none",
+          transition: "border-color 0.15s, box-shadow 0.15s",
+        }}
+      >
+        <span>{selected ? selected.displayName : "Select employee…"}</span>
+        <svg
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ flexShrink: 0, opacity: 0.5, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && rect && (
+        <div
+          style={{
+            position: "fixed",
+            top: rect.bottom + 4,
+            left: rect.left,
+            width: rect.width,
+            zIndex: 9999,
+            background: "var(--bg-card)",
+            border: "1px solid var(--border-soft)",
+            borderRadius: 12,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+            overflow: "hidden",
+          }}
+        >
+          {/* Search input */}
+          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border-soft)" }}>
+            <input
+              autoFocus
+              placeholder="Search employee…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "100%",
+                border: "1px solid var(--input-border)",
+                borderRadius: 8,
+                padding: "6px 10px",
+                font: "inherit",
+                fontSize: "0.88rem",
+                color: "var(--input-text)",
+                background: "var(--input-bg)",
+                margin: 0,
+              }}
+            />
+          </div>
+
+          {/* Employee list */}
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: "4px 0",
+              maxHeight: 200,
+              overflowY: "auto",
+            }}
+          >
+            {filtered.length === 0 && (
+              <li style={{ padding: "10px 14px", color: "var(--text-muted)", fontSize: "0.88rem" }}>
+                No employees found
+              </li>
+            )}
+            {filtered.map((emp) => (
+              <li
+                key={emp.id}
+                onMouseDown={() => {
+                  onChange(emp.id);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                style={{
+                  padding: "9px 14px",
+                  cursor: "pointer",
+                  fontSize: "0.92rem",
+                  fontWeight: emp.id === value ? 700 : 400,
+                  color: emp.id === value ? "var(--primary)" : "var(--text-primary)",
+                  background: emp.id === value ? "var(--primary-subtle, rgba(59,130,246,0.08))" : "transparent",
+                  borderRadius: 6,
+                  margin: "1px 4px",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) => {
+                  if (emp.id !== value) {
+                    (e.currentTarget as HTMLElement).style.background = "var(--bg-subtle)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background =
+                    emp.id === value ? "var(--primary-subtle, rgba(59,130,246,0.08))" : "transparent";
+                }}
+              >
+                {emp.displayName}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── New Claim Modal ──────────────────────────────────────────────────────────
 
 interface NewClaimModalProps {
-  employees: { id: string; full_name: string }[];
+  employees: { id: string; displayName: string }[];
   onClose: () => void;
   onCreated: () => void;
 }
@@ -439,18 +611,15 @@ function NewClaimModal({ employees, onClose, onCreated }: NewClaimModalProps) {
           <button type="button" onClick={onClose} className="modal-close">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-form stack-16">
+
+          {/* Employee — custom searchable picker */}
           <div className="form-group">
             <label>Employee *</label>
-            <select
+            <EmployeePicker
+              employees={employees}
               value={form.user_id}
-              onChange={(e) => setForm((f) => ({ ...f, user_id: e.target.value }))}
-              required
-            >
-              <option value="">Select employee...</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>{emp.full_name}</option>
-              ))}
-            </select>
+              onChange={(id) => setForm((f) => ({ ...f, user_id: id }))}
+            />
           </div>
 
           <div className="form-group">
@@ -471,10 +640,7 @@ function NewClaimModal({ employees, onClose, onCreated }: NewClaimModalProps) {
             <div className="form-group">
               <label>Amount (₹) *</label>
               <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
+                type="number" min="0" step="0.01" placeholder="0.00"
                 value={form.amount_inr}
                 onChange={(e) => setForm((f) => ({ ...f, amount_inr: e.target.value }))}
                 required
@@ -483,10 +649,7 @@ function NewClaimModal({ employees, onClose, onCreated }: NewClaimModalProps) {
             <div className="form-group">
               <label>Distance (km)</label>
               <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
+                type="number" min="0" step="0.01" placeholder="0.00"
                 value={form.distance_km}
                 onChange={(e) => setForm((f) => ({ ...f, distance_km: e.target.value }))}
               />

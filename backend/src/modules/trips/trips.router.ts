@@ -252,16 +252,19 @@ router.post("/:id/end", async (req: Request, res: Response, next: NextFunction) 
       throw new AppError("Failed to end trip", 500);
     }
 
-    // Auto-create DRAFT claim and link to daily bundle if distance > 0
+    // ─── Auto-create DRAFT claim + bundle (compensating pattern) ────────────
+    // The trip is already marked complete. Steps below are best-effort;
+    // failures are logged per-step so nothing is silently lost.
     let claim = null;
+    let claimSynced = false;
+    let bundleSynced = false;
+
     if (distResult.totalKm > 0) {
       const ratePerKm = req.user!.rate_per_km ?? 10;
       const amountInr = Math.round(distResult.totalKm * ratePerKm * 100) / 100;
-
-      // Bundle date = started_at date (in ISO date format)
       const claimDate = trip.started_at.slice(0, 10);
 
-      // Upsert daily bundle for this user + date
+      // Step 1: Upsert daily bundle
       const { data: bundle, error: bundleError } = await supabaseAdmin
         .from("daily_claim_bundles")
         .upsert(
@@ -272,9 +275,13 @@ router.post("/:id/end", async (req: Request, res: Response, next: NextFunction) 
         .single();
 
       if (bundleError || !bundle) {
-        logger.error("Failed to upsert daily bundle", { error: bundleError?.message });
+        logger.error("COMPENSATE: Failed to upsert daily bundle — claim NOT created", {
+          tripId, userId, error: bundleError?.message
+        });
       } else {
-        // Create the claim as draft, linked to the bundle
+        bundleSynced = true;
+
+        // Step 2: Insert draft claim
         const { data: newClaim, error: claimError } = await supabaseAdmin
           .from("claims")
           .insert({
@@ -291,21 +298,31 @@ router.post("/:id/end", async (req: Request, res: Response, next: NextFunction) 
           .single();
 
         if (claimError) {
-          logger.error("Failed to auto-create draft claim", { error: claimError.message });
+          logger.error("COMPENSATE: Failed to create draft claim — bundle exists without claim", {
+            tripId, bundleId: bundle.id, userId, error: claimError.message
+          });
         } else {
           claim = newClaim;
-          // Sync bundle totals
-          try { await syncBundleTotals(bundle.id); } catch { /* non-blocking */ }
+          claimSynced = true;
+
+          // Step 3: Sync bundle totals (non-blocking, already idempotent)
+          try {
+            await syncBundleTotals(bundle.id);
+          } catch (syncErr) {
+            logger.warn("COMPENSATE: syncBundleTotals failed — totals will refresh on next load", {
+              bundleId: bundle.id, error: (syncErr as Error).message
+            });
+          }
         }
       }
     }
 
     logger.info("Trip ended", {
-      tripId,
-      userId,
+      tripId, userId,
       distanceKm: distResult.totalKm,
       durationSec: totalDuration,
-      claimCreated: !!claim,
+      claimCreated: claimSynced,
+      bundleCreated: bundleSynced,
     });
 
     res.json({
@@ -314,6 +331,8 @@ router.post("/:id/end", async (req: Request, res: Response, next: NextFunction) 
         trip: updatedTrip,
         distance: distResult,
         claim,
+        claimSynced,
+        bundleSynced,
       },
     });
   } catch (err) {

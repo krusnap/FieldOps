@@ -17,7 +17,6 @@ const titleMap: Array<{ key: string; title: string }> = [
   { key: "manager-control", title: "Manager Control" },
   { key: "permissions", title: "Permissions" },
   { key: "analytics", title: "Analytics" },
-  { key: "system", title: "System Monitoring" },
   { key: "data-viewer", title: "Data Viewer" },
 ];
 

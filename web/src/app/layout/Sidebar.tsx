@@ -20,7 +20,6 @@ const navByRole: Record<AppRole, Array<{ label: string; to: string }>> = {
     { label: "Manager Control", to: "/admin/manager-control" },
     { label: "Permissions", to: "/admin/permissions" },
     { label: "Analytics", to: "/admin/analytics" },
-    { label: "System Monitoring", to: "/admin/system" },
     { label: "Data Viewer", to: "/admin/data-viewer" },
   ],
   accountant: [

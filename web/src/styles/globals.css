@@ -1044,7 +1044,7 @@ label {
   border-radius: 20px;
   border: 1px solid var(--border-soft);
   box-shadow: 0 20px 60px rgba(0,0,0,0.18);
-  overflow: hidden;
+  /* No overflow:hidden — it clips custom dropdowns. Children clip themselves. */
 }
 
 .modal-header {
@@ -1053,6 +1053,7 @@ label {
   justify-content: space-between;
   padding: 16px 18px 14px;
   border-bottom: 1px solid var(--border-soft);
+  border-radius: 20px 20px 0 0;
 }
 
 .modal-header h2 {

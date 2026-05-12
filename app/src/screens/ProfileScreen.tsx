@@ -6,6 +6,7 @@ import { BottomNav, BottomTabKey } from "../components/BottomNav";
 import { colors } from "../theme/colors";
 
 type ProfileScreenProps = {
+  assignedManager: { id: string; full_name: string; email: string } | null;
   employeeId: string;
   employeeName: string;
   onSelectTab: (tab: BottomTabKey) => void;
@@ -14,7 +15,7 @@ type ProfileScreenProps = {
   roleTitle: string;
 };
 
-export function ProfileScreen({ employeeId, employeeName, onLogout, onSelectTab, region, roleTitle }: ProfileScreenProps) {
+export function ProfileScreen({ assignedManager, employeeId, employeeName, onLogout, onSelectTab, region, roleTitle }: ProfileScreenProps) {
   const displayId = employeeId.startsWith("EMP-") ? employeeId : `EMP-${employeeId.slice(0, 4).toUpperCase()}`;
   const settings = [
     { icon: "badge", label: "Employee Profile", value: displayId },
@@ -59,6 +60,26 @@ export function ProfileScreen({ employeeId, employeeName, onLogout, onSelectTab,
                 <MaterialIcons color={colors.outline} name="chevron-right" size={20} />
               </Pressable>
             ))}
+          </View>
+        </View>
+
+        {/* Manager Info */}
+        <View style={styles.settingsCard}>
+          <Text style={styles.sectionTitle}>Reporting To</Text>
+          <View style={styles.settingRow}>
+            <View style={styles.settingIconWrap}>
+              <MaterialIcons color={colors.primary} name="supervisor-account" size={18} />
+            </View>
+            <View style={styles.settingTextWrap}>
+              <Text style={styles.settingLabel}>
+                {assignedManager ? assignedManager.full_name : "No manager assigned"}
+              </Text>
+              {assignedManager ? (
+                <Text style={styles.settingValue}>{assignedManager.email}</Text>
+              ) : (
+                <Text style={styles.settingValue}>Contact admin to get assigned</Text>
+              )}
+            </View>
           </View>
         </View>
 

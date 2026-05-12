@@ -1,23 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Card from "../../../components/ui/Card";
+import Badge from "../../../components/ui/Badge";
+import Button from "../../../components/ui/Button";
 import Skeleton from "../../../components/ui/Skeleton";
 import EmptyState from "../../../components/ui/EmptyState";
-import RouteMapPlaceholder from "../../../components/maps/RouteMapPlaceholder";
-import TripRouteMap from "../../../components/maps/TripRouteMap";
-import { employees, tripHistory } from "../../../mocks/data";
+import apiClient from "../../../lib/apiClient";
 
 export default function EmployeeDetailPage() {
-  const { employeeId } = useParams();
+  const { employeeId } = useParams<{ employeeId: string }>();
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setLoading(false), 700);
-    return () => window.clearTimeout(timer);
+    if (!employeeId) return;
+    setLoading(true);
+    apiClient.getEmployee(employeeId)
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [employeeId]);
-
-  const employee = useMemo(() => employees.find((item) => item.id === employeeId), [employeeId]);
-  const trips = useMemo(() => tripHistory.filter((item) => item.employeeId === employeeId), [employeeId]);
 
   if (loading) {
     return (
@@ -29,68 +31,94 @@ export default function EmployeeDetailPage() {
     );
   }
 
-  if (!employee) {
+  if (!data || !data.employee) {
     return <EmptyState title="Employee Not Found" subtitle="Select another employee from the monitoring list." />;
   }
 
+  const { employee, trips, claims, stats } = data;
+
   return (
     <div className="stack-24">
-      <Card title={employee.name} subtitle={`${employee.designation} · ${employee.city}`}>
+      {/* Profile card */}
+      <Card
+        title={employee.full_name}
+        subtitle={`${employee.email} · Rate: ₹${Number(employee.rate_per_km).toFixed(2)}/km`}
+        action={
+          <span className={`badge ${employee.is_active ? "badge-approved" : "badge-offline"}`}>
+            {employee.is_active ? "Active" : "Inactive"}
+          </span>
+        }
+      >
         <div className="metrics-grid">
-          <p>
-            Total Trips <strong>{employee.weeklyTrips}</strong>
-          </p>
-          <p>
-            Total Distance <strong>{employee.weeklyDistanceKm} km</strong>
-          </p>
-          <p>
-            Claims Approved <strong>{employee.claimsApproved}</strong>
-          </p>
-          <p>
-            Claims Rejected <strong>{employee.claimsRejected}</strong>
-          </p>
+          <p>Weekly Trips <strong>{stats.weeklyTrips}</strong></p>
+          <p>Weekly Distance <strong>{stats.weeklyDistanceKm} km</strong></p>
+          <p>Pending Claims <strong>{stats.pendingClaims}</strong></p>
+          <p>Total Trips <strong>{stats.totalTrips}</strong></p>
         </div>
       </Card>
 
-      <Card title="Route Map" subtitle="Selected day route visualization">
-        {trips.length > 0 ? (
-          <TripRouteMap origin={trips[0].origin} destination={trips[0].destination} />
-        ) : (
-          <RouteMapPlaceholder origin="Primary Office" destination="Latest client destination" />
-        )}
-      </Card>
-
-      <Card title="Trip History" subtitle="Recent travel records">
+      {/* Trip history */}
+      <Card title="Trip History" subtitle="Recent trips recorded by this employee">
         {trips.length === 0 ? (
-          <EmptyState title="No Trips Recorded" subtitle="Trips for this employee will appear once available." />
+          <EmptyState title="No Trips Yet" subtitle="Trips will appear here once the employee starts tracking." />
         ) : (
           <table className="table">
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Route</th>
                 <th>Distance</th>
                 <th>Duration</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {trips.map((trip) => (
+              {trips.slice(0, 10).map((trip: any) => (
                 <tr key={trip.id}>
-                  <td>{trip.date}</td>
+                  <td>{new Date(trip.started_at).toLocaleDateString("en-IN")}</td>
+                  <td>{Number(trip.total_distance_km).toFixed(1)} km</td>
+                  <td>{trip.total_duration_seconds ? `${Math.round(trip.total_duration_seconds / 60)} min` : "—"}</td>
                   <td>
-                    {trip.origin} {"->"} {trip.destination}
+                    <span className={`badge badge-${trip.status === "completed" ? "approved" : trip.status === "active" ? "pending" : "offline"}`}>
+                      {trip.status}
+                    </span>
                   </td>
-                  <td>{trip.distanceKm} km</td>
-                  <td>{trip.durationMin} min</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      {/* Claims history */}
+      <Card title="Claims History" subtitle="Reimbursement claims for this employee">
+        {claims.length === 0 ? (
+          <EmptyState title="No Claims Yet" subtitle="Claims will appear after trips are completed." />
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Category</th>
+                <th>Amount</th>
+                <th>Distance</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {claims.slice(0, 8).map((claim: any) => (
+                <tr key={claim.id}>
+                  <td>{claim.created_at ? new Date(claim.created_at).toLocaleDateString("en-IN") : "—"}</td>
+                  <td>{claim.category ?? "Trip Reimbursement"}</td>
+                  <td>₹{Number(claim.amount_inr).toFixed(2)}</td>
+                  <td>{Number(claim.distance_km).toFixed(1)} km</td>
+                  <td><Badge status={claim.status as any} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
         <div className="top-space">
-          <Link to="/manager/employees" className="link-inline">
-            Back to Employee Monitoring
-          </Link>
+          <Link to="/manager/employees" className="link-inline">← Back to Employee Monitoring</Link>
         </div>
       </Card>
     </div>

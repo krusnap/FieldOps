@@ -8,22 +8,11 @@ export type LocationPoint = {
   accuracy?: number | null;
 };
 
-export type EmployeeTask = {
-  time: string;
-  title: string;
-  place: string;
-};
-
-export type EmployeeCheckpoint = {
-  label: string;
-  eta: string;
-};
-
 export type EmployeeClaim = {
   id: string;
   category: string;
   amountInr: number;
-  status: "Pending" | "Approved" | "Submitted" | "Review";
+  status: "Pending" | "Approved" | "Rejected";
   tripId?: string;
   createdAt: string;
 };
@@ -36,17 +25,10 @@ export type EmployeeUser = {
   region: string;
   pendingActions: number;
   weeklyCompliance: string;
-  tasks: EmployeeTask[];
-  checkpoints: EmployeeCheckpoint[];
   geofenceCenter: { latitude: number; longitude: number };
   geofenceRadiusMeters: number;
 };
 
-export type EmployeeAccountRecord = EmployeeUser & {
-  password: string;
-  role: UserRole;
-  initialClaims: EmployeeClaim[];
-};
 
 export type TripRecord = {
   tripId: string;

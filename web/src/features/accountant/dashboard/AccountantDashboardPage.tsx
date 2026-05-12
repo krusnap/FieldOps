@@ -1,139 +1,157 @@
-import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
+import Button from "../../../components/ui/Button";
 import DonutStatusChart from "../../../components/charts/DonutStatusChart";
 import BarDistanceChart from "../../../components/charts/BarDistanceChart";
+import { Link } from "react-router-dom";
 import apiClient from "../../../lib/apiClient";
 
+interface AccountantStats {
+  approvedCount: number;
+  pendingCount: number;
+  rejectedCount: number;
+  totalApprovedAmountInr: number;
+  totalPendingAmountInr: number;
+  totalRejectedAmountInr: number;
+  approvedDistanceKm: number;
+  pendingDistanceKm: number;
+  rejectedDistanceKm: number;
+  recentApproved: BundleRow[];
+  recentAll: BundleRow[];
+}
+
+interface BundleRow {
+  id: string;
+  employeeName: string;
+  date: string;
+  amountInr: number;
+  distanceKm: number;
+  tripCount: number;
+  status: string;
+}
+
 export default function AccountantDashboardPage() {
-  const [claimsList, setClaimsList] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState<AccountantStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      try {
-        setIsLoading(true);
-        const claimsData = await apiClient.getClaims();
-        if (!mounted) return;
-        setClaimsList(claimsData ?? []);
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error("Failed to load claims for accountant dashboard", err);
-      } finally {
-        if (mounted) setIsLoading(false);
-      }
-    };
-
-    load();
-
-    return () => {
-      mounted = false;
-    };
+    apiClient.getAccountantDashboard()
+      .then(setStats)
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
-  const approved = claimsList.filter((item) => item.status === "approved").length;
-  const rejected = claimsList.filter((item) => item.status === "rejected").length;
-  const pending = claimsList.filter((item) => item.status === "pending").length;
+  if (loading) return <p style={{ padding: 24 }}>Loading accountant dashboard...</p>;
+  if (!stats) return <p style={{ padding: 24, color: "red" }}>Failed to load dashboard.</p>;
 
-  const approvedAmount = claimsList.filter((item) => item.status === "approved").reduce((total, item) => total + (item.amount ?? 0), 0);
-  const rejectedAmount = claimsList.filter((item) => item.status === "rejected").reduce((total, item) => total + (item.amount ?? 0), 0);
-
-  const reimbursementDistance = [
-    {
-      label: "Approved KM",
-      value: claimsList.filter((item) => item.status === "approved").reduce((sum, item) => sum + (item.distanceKm ?? 0), 0),
-    },
-    {
-      label: "Rejected KM",
-      value: claimsList.filter((item) => item.status === "rejected").reduce((sum, item) => sum + (item.distanceKm ?? 0), 0),
-    },
-    {
-      label: "Pending KM",
-      value: claimsList.filter((item) => item.status === "pending").reduce((sum, item) => sum + (item.distanceKm ?? 0), 0),
-    },
+  const distanceData = [
+    { label: "Approved KM", value: stats.approvedDistanceKm },
+    { label: "Pending KM", value: stats.pendingDistanceKm },
+    { label: "Rejected KM", value: stats.rejectedDistanceKm },
   ];
-
-  const latestClaims = [...claimsList].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, 5);
 
   return (
     <div className="stack-24">
-      {isLoading ? <p>Loading accountant dashboard...</p> : null}
-
+      {/* KPI Row */}
       <section className="stats-grid">
-        <Card title="Total Approved Claims">
-          <p className="kpi success">{approved}</p>
+        <Card title="Total Approved">
+          <p className="kpi success">{stats.approvedCount}</p>
+          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+            ₹{stats.totalApprovedAmountInr.toFixed(2)} reimbursed
+          </p>
         </Card>
-        <Card title="Total Rejected Claims">
-          <p className="kpi">{rejected}</p>
+        <Card title="Pending Approval">
+          <p className="kpi warning">{stats.pendingCount}</p>
+          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+            ₹{stats.totalPendingAmountInr.toFixed(2)} awaiting
+          </p>
         </Card>
-        <Card title="Pending Claims">
-          <p className="kpi warning">{pending}</p>
+        <Card title="Rejected">
+          <p className="kpi">{stats.rejectedCount}</p>
+          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+            ₹{stats.totalRejectedAmountInr.toFixed(2)} excluded
+          </p>
         </Card>
-        <Card title="Approved Reimbursement Value">
-          <p className="kpi">${approvedAmount.toFixed(2)}</p>
+        <Card title="Approved Reimbursement">
+          <p className="kpi success">₹{stats.totalApprovedAmountInr.toFixed(2)}</p>
+          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+            {stats.approvedDistanceKm.toFixed(1)} km covered
+          </p>
         </Card>
       </section>
 
       <section className="content-grid-2">
         <Card title="Claims Status Mix" subtitle="Approved vs rejected vs pending">
-          <DonutStatusChart approved={approved} rejected={rejected} pending={pending} />
+          <DonutStatusChart
+            approved={stats.approvedCount}
+            rejected={stats.rejectedCount}
+            pending={stats.pendingCount}
+          />
         </Card>
 
-        <Card title="Distance Snapshot" subtitle="Distance covered by reimbursement outcome">
-          <BarDistanceChart data={reimbursementDistance} />
+        <Card title="Distance Snapshot" subtitle="km covered by reimbursement outcome">
+          <BarDistanceChart data={distanceData} />
         </Card>
       </section>
 
       <section className="content-grid-2">
-        <Card title="Latest Claim Records" subtitle="Most recent reimbursement entries">
+        {/* Recent approved bundles table */}
+        <Card title="Latest Claim Bundles" subtitle="Most recent reimbursement entries">
           <table className="table">
             <thead>
               <tr>
                 <th>Employee</th>
                 <th>Date</th>
+                <th>Trips</th>
                 <th>Amount</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {latestClaims.map((claim) => (
-                <tr key={claim.id}>
-                  <td>{claim.employeeName || claim.employee_email || claim.user_email}</td>
-                  <td>{claim.date}</td>
-                  <td>${(claim.amount ?? 0).toFixed(2)}</td>
-                  <td>
-                    <Badge status={claim.status} />
-                  </td>
+              {stats.recentAll.length === 0 ? (
+                <tr><td colSpan={5} style={{ color: "var(--text-muted)", textAlign: "center" }}>No records yet</td></tr>
+              ) : stats.recentAll.map((b) => (
+                <tr key={b.id}>
+                  <td>{b.employeeName}</td>
+                  <td>{b.date}</td>
+                  <td>{b.tripCount}</td>
+                  <td>₹{b.amountInr.toFixed(2)}</td>
+                  <td><Badge status={b.status as any} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </Card>
 
-        <Card title="Accountant Actions" subtitle="Read-only reimbursement workflow">
+        {/* Summary panel */}
+        <Card title="Reimbursement Summary" subtitle="Financial breakdown for this period">
           <div className="list-stack">
             <article className="list-item">
               <div>
                 <strong>Approved Amount</strong>
-                <p>${approvedAmount.toFixed(2)} ready for reimbursement cycle</p>
+                <p>₹{stats.totalApprovedAmountInr.toFixed(2)} ready for reimbursement cycle</p>
               </div>
               <Badge status="approved" />
             </article>
             <article className="list-item">
               <div>
+                <strong>Pending Amount</strong>
+                <p>₹{stats.totalPendingAmountInr.toFixed(2)} awaiting manager decision</p>
+              </div>
+              <Badge status="pending" />
+            </article>
+            <article className="list-item">
+              <div>
                 <strong>Rejected Amount</strong>
-                <p>${rejectedAmount.toFixed(2)} excluded from reimbursement</p>
+                <p>₹{stats.totalRejectedAmountInr.toFixed(2)} excluded from reimbursement</p>
               </div>
               <Badge status="rejected" />
             </article>
           </div>
           <div className="top-space">
             <Link to="/accountant/claims">
-              <Button className="full-width">Open Claims Table</Button>
+              <Button className="full-width">Open Full Claims Table</Button>
             </Link>
           </div>
         </Card>

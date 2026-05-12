@@ -23,6 +23,7 @@ function MainApp() {
   const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
   const {
     alerts,
+    assignedManager,
     claims,
     currentLocation,
     elapsedSeconds,
@@ -95,7 +96,6 @@ function MainApp() {
           pendingClaimAmountInr={pendingClaimAmountInr}
           primaryActionLabel={primaryActionLabel}
           region={user.region}
-          tasks={user.tasks}
           todayDistanceKm={todayDistanceKm}
           tripStatus={tripStatus}
           weeklyCompliance={weeklyCompliance}
@@ -128,6 +128,7 @@ function MainApp() {
     case "profile":
       return (
         <ProfileScreen
+          assignedManager={assignedManager}
           employeeId={user.employeeId}
           employeeName={user.name}
           onLogout={logout}
@@ -153,7 +154,6 @@ function MainApp() {
           pendingClaimAmountInr={pendingClaimAmountInr}
           primaryActionLabel={primaryActionLabel}
           region={user.region}
-          tasks={user.tasks}
           todayDistanceKm={todayDistanceKm}
           tripStatus={tripStatus}
           weeklyCompliance={weeklyCompliance}

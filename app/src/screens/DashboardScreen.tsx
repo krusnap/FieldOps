@@ -33,7 +33,6 @@ type DashboardScreenProps = {
   pendingClaimAmountInr: number;
   primaryActionLabel: "Start Trip" | "Pause Trip" | "Resume Trip";
   region: string;
-  tasks: Array<{ time: string; title: string; place: string }>;
   todayDistanceKm: number;
   tripStatus: TripStatus;
   weeklyCompliance: string;
@@ -62,7 +61,6 @@ export function DashboardScreen({
   pendingClaimAmountInr,
   primaryActionLabel,
   region,
-  tasks,
   todayDistanceKm,
   tripStatus,
   weeklyCompliance
@@ -132,23 +130,6 @@ export function DashboardScreen({
           ))}
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Today&apos;s Schedule</Text>
-          <View style={styles.taskWrap}>
-            {tasks.map((task) => (
-              <View key={task.title} style={styles.taskRow}>
-                <View style={styles.timeBadge}>
-                  <Text style={styles.timeText}>{task.time}</Text>
-                </View>
-                <View style={styles.taskTextWrap}>
-                  <Text style={styles.taskTitle}>{task.title}</Text>
-                  <Text style={styles.taskPlace}>{task.place}</Text>
-                </View>
-                <MaterialIcons color={colors.outline} name="chevron-right" size={20} />
-              </View>
-            ))}
-          </View>
-        </View>
       </ScrollView>
 
       <BottomNav activeTab="dashboard" onSelectTab={onSelectTab} />

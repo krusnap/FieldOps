@@ -46,11 +46,11 @@ export default function AccountantClaimDetailPage() {
       <div className="metrics-grid">
         <p>
           Employee
-          <strong>{claim.employeeName || claim.employee_email || claim.user_email}</strong>
+          <strong>{claim.users?.full_name ?? claim.employee_email ?? claim.user_email ?? "Unknown"}</strong>
         </p>
         <p>
           Amount
-          <strong>${(claim.amount ?? 0).toFixed(2)}</strong>
+          <strong>₹{Number(claim.amount_inr ?? claim.amount ?? 0).toFixed(2)}</strong>
         </p>
         <p>
           Status
@@ -58,7 +58,7 @@ export default function AccountantClaimDetailPage() {
         </p>
         <p>
           Distance
-          <strong>{claim.distanceKm ?? claim.distance_km ?? 0} km</strong>
+          <strong>{Number(claim.distance_km ?? 0).toFixed(1)} km</strong>
         </p>
       </div>
       <div className="top-space">

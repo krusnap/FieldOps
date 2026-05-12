@@ -1,7 +1,7 @@
 export type AppRole = "manager" | "admin" | "accountant";
 
 export type EmployeeStatus = "traveling" | "idle" | "offline";
-export type ClaimStatus = "approved" | "rejected" | "pending";
+export type ClaimStatus = "approved" | "rejected" | "pending" | "draft";
 
 export interface Employee {
   id: string;
